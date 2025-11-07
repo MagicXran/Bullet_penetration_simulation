@@ -1,0 +1,93 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境
+venv/
+ENV/
+env/
+.venv/
+
+# 测试和覆盖率
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+*.cover
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 运行时数据
+data/uploads/*
+data/temp/*
+!data/uploads/.gitkeep
+!data/temp/.gitkeep
+
+# 日志
+logs/
+*.log
+
+# 配置（敏感信息）
+.env
+.env.local
+.env.*.local
+
+# Redis持久化
+dump.rdb
+appendonly.aof
+
+# 临时文件
+*.tmp
+*.bak
+*.orig
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# MinIO数据
+minio-data/
+
+# 备份文件
+backup/
+*.sql
+*.tar.gz
+*.zip
+
+# 编译文件
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# 文档构建
+docs/_build/
+site/

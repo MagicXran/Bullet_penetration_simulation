@@ -1,4 +1,4 @@
-# Implementation Plan: [FEATURE]
+﻿# Implementation Plan: [FEATURE]
 
 **Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
 **Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
@@ -31,7 +31,33 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+**Reference**: `.specify/memory/constitution.md` v1.0.0
+
+### I. Good Taste Check
+- [ ] 数据结构是否消除了特殊情况？
+- [ ] 是否存在超过3层的嵌套？如有，是否已重新设计？
+- [ ] 边界条件是否融入了正常流程？
+
+### II. Performance Check
+- [ ] 关键算法是否标注了时间和空间复杂度？
+- [ ] 是否规划了性能测试和 profiling？
+- [ ] 内存分配模式是否可控（避免不必要的拷贝）？
+
+### III. Simplicity Check
+- [ ] 是否遵循 KISS 原则（没有过度设计）？
+- [ ] 是否遵循 YAGNI 原则（没有解决假想问题）？
+- [ ] 是否遵循 DRY 原则（没有重复代码，但也没有无意义抽象）？
+- [ ] 命名是否清晰直接？
+
+### IV. Backward Compatibility Check
+- [ ] 是否会破坏现有模拟结果？
+- [ ] API 变更是否保持向后兼容或提供迁移路径？
+- [ ] 配置/数据文件格式是否版本化？
+
+### V. Critical Review Readiness
+- [ ] 设计文档是否清晰到足以被犀利审查？
+- [ ] 是否已考虑了更简单的替代方案？
+- [ ] 是否评估了对现有功能的影响？
 
 ## Project Structure
 

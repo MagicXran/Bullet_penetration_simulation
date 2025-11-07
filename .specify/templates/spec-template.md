@@ -1,4 +1,4 @@
-# Feature Specification: [FEATURE NAME]
+﻿# Feature Specification: [FEATURE NAME]
 
 **Feature Branch**: `[###-feature-name]`  
 **Created**: [DATE]  
@@ -105,6 +105,8 @@
 <!--
   ACTION REQUIRED: Define measurable success criteria.
   These must be technology-agnostic and measurable.
+
+  CONSTITUTION ALIGNMENT: 确保包含性能指标（Performance First 原则）
 -->
 
 ### Measurable Outcomes
@@ -113,3 +115,12 @@
 - **SC-002**: [Measurable metric, e.g., "System handles 1000 concurrent users without degradation"]
 - **SC-003**: [User satisfaction metric, e.g., "90% of users successfully complete primary task on first attempt"]
 - **SC-004**: [Business metric, e.g., "Reduce support tickets related to [X] by 50%"]
+
+### Performance Criteria *(mandatory for performance-sensitive features)*
+
+**Reference**: `.specify/memory/constitution.md` - Performance Standards
+
+- **PC-001**: [Performance target, e.g., "Ballistic calculation < 1ms per iteration"]
+- **PC-002**: [Performance target, e.g., "Collision detection < 100μs per check"]
+- **PC-003**: [Performance target, e.g., "Frame rate ≥60 FPS in visualization mode"]
+- **PC-004**: [Memory constraint, e.g., "Memory usage < 500MB for standard scenarios"]

@@ -1,4 +1,4 @@
----
+﻿---
 description: "Task list template for feature implementation"
 ---
 
@@ -147,12 +147,16 @@ Examples of foundational tasks (adjust based on your project):
 
 **Purpose**: Improvements that affect multiple user stories
 
+**CONSTITUTION ALIGNMENT**: Code Quality Standards & Performance Standards
+
 - [ ] TXXX [P] Documentation updates in docs/
-- [ ] TXXX Code cleanup and refactoring
-- [ ] TXXX Performance optimization across all stories
+- [ ] TXXX Code cleanup and refactoring (遵循 Good Taste 原则：消除特殊情况)
+- [ ] TXXX Performance optimization across all stories (验证是否达到 Performance Standards)
+- [ ] TXXX [P] Performance benchmarking and profiling reports in docs/performance/
 - [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/
 - [ ] TXXX Security hardening
 - [ ] TXXX Run quickstart.md validation
+- [ ] TXXX Constitution compliance review (检查是否违反核心原则)
 
 ---
 
@@ -239,6 +243,14 @@ With multiple developers:
 
 ## Notes
 
+**CONSTITUTION COMPLIANCE** (参考 `.specify/memory/constitution.md` v1.0.0):
+- 函数嵌套不超过3层 (Good Taste 原则)
+- 单个函数不超过50行（物理计算除外）
+- 所有算法必须标注时间和空间复杂度 (Performance First 原则)
+- 关键路径代码必须有性能测试
+- 文档必须与代码同步更新 (Documentation Standards)
+
+**TASK MANAGEMENT**:
 - [P] tasks = different files, no dependencies
 - [Story] label maps task to specific user story for traceability
 - Each user story should be independently completable and testable

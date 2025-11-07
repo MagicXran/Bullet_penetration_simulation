@@ -1,0 +1,57 @@
+# Git属性配置文件
+# 明确定义文件编码和换行符处理策略
+
+# 默认行为：文本文件自动转换为CRLF（Windows）
+* text=auto eol=crlf
+
+# Shell脚本使用LF换行符（Unix标准）
+*.sh text eol=lf
+
+# Python文件
+*.py text eol=crlf
+
+# JavaScript文件
+*.js text eol=crlf
+
+# HTML/CSS文件
+*.html text eol=crlf
+*.css text eol=crlf
+
+# JSON/YAML配置文件
+*.json text eol=crlf
+*.yaml text eol=crlf
+*.yml text eol=crlf
+
+# Markdown文档
+*.md text eol=crlf
+
+# K文件（LS-DYNA）
+*.k text eol=crlf
+*.key text eol=crlf
+*.dyn text eol=crlf
+
+# Batch文件（Windows）
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制文件不做转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar binary
+*.gz binary
+
+# Python相关
+*.pyc binary
+*.pyd binary
+*.pyo binary
+*.so binary
+*.dll binary
+
+# 导出文件忽略
+.gitattributes export-ignore
+.gitignore export-ignore

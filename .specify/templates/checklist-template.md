@@ -1,4 +1,4 @@
-# [CHECKLIST TYPE] Checklist: [FEATURE NAME]
+﻿# [CHECKLIST TYPE] Checklist: [FEATURE NAME]
 
 **Purpose**: [Brief description of what this checklist covers]
 **Created**: [DATE]
