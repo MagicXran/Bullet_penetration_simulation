@@ -10,6 +10,7 @@
 - ✅ **参数验证**：实时验证参数合理性，防止错误配置
 - 📊 **生成历史**：记录所有生成的文件和参数
 - 🚀 **快速原型**：从手动30分钟降低到2分钟
+- 🎬 **动画生成 (NEW!)**：自动将d3plot文件渲染为MP4动画
 
 ---
 
@@ -51,6 +52,9 @@ Bullet_penetration_simulation/
 │   ├── unit_converter.py      # 单位转换模块
 │   ├── parameter_config.py    # 参数配置
 │   ├── validators.py          # 参数验证器
+│   ├── animation_config.py    # 动画配置（NEW!）
+│   ├── animation_generator.py # 动画生成引擎（NEW!）
+│   ├── config.json            # 系统配置（NEW!）
 │   └── requirements.txt       # Python依赖
 ├── frontend/                   # 前端界面
 │   ├── index.html             # 主页面
@@ -58,10 +62,13 @@ Bullet_penetration_simulation/
 │   └── app.js                 # 前端逻辑
 ├── templates/                  # K文件模板
 │   └── 1.k                    # 原始模板文件
-├── generated/                  # 生成的K文件
+├── generated/                  # 生成的文件
+│   ├── *.k                    # K文件
+│   └── animations/            # 动画文件（NEW!）
 ├── docs/                       # 文档
 │   ├── unit_system.md         # 单位系统说明
-│   └── parameter_guide.md     # 参数指南
+│   ├── parameter_guide.md     # 参数指南
+│   └── animation_user_guide.md # 动画生成指南（NEW!）
 └── README.md
 ```
 
@@ -116,9 +123,55 @@ Bullet_penetration_simulation/
 
 ---
 
+## 🎬 动画生成功能
+
+### 功能概述
+
+系统提供**阶段2专业自动化方案**，自动调用LS-PrePost将d3plot仿真结果渲染为高质量MP4动画。
+
+### 配置步骤
+
+1. **安装LS-PrePost**（如未安装）
+2. **编辑配置文件** `backend/config.json`：
+   ```json
+   {
+     "lsprepost_executable": "C:\\Program Files\\LSTC\\LS-PrePost 4.9\\lsprepost4.9_x64.exe",
+     "animation_output_dir": "generated/animations"
+   }
+   ```
+3. **重启后端服务**
+
+### 使用流程
+
+```
+生成K文件 → 运行LS-DYNA仿真 → 生成d3plot → 自动渲染动画 → 播放/下载
+```
+
+1. 打开Web界面，滚动到"仿真动画生成"部分
+2. 输入d3plot文件路径（服务器可访问的绝对路径）
+3. 选择视角、云图变量、分辨率等参数
+4. 点击"开始生成动画"
+5. 监控任务进度，完成后播放或下载
+
+### 功能特性
+
+- ✅ **全自动渲染** - 无需手动操作LS-PrePost
+- 🎨 **7种相机视角** - 等角、正视、俯视等
+- 📊 **6种云图变量** - 应力、应变、位移、速度等
+- 🔄 **异步任务队列** - 后台处理，实时进度监控
+- 🎬 **专业质量** - 使用LS-PrePost原生渲染引擎
+
+### 详细文档
+
+完整配置和使用说明请参考：[动画生成用户指南](docs/animation_user_guide.md)
+
+---
+
 ## 🔧 API 接口
 
 系统提供 RESTful API：
+
+### K文件生成API
 
 ```
 GET  /api/parameters          - 获取参数定义
@@ -126,6 +179,15 @@ POST /api/validate            - 验证参数
 POST /api/generate            - 生成K文件
 GET  /api/files               - 列出生成历史
 GET  /api/download/{filename} - 下载文件
+```
+
+### 动画生成API (NEW!)
+
+```
+POST /api/animation/generate            - 创建动画任务
+GET  /api/animation/status/{task_id}    - 查询任务状态
+GET  /api/animation/list                - 列出所有任务
+GET  /api/animation/download/{task_id}  - 下载动画文件
 ```
 
 API文档：`http://localhost:8000/docs`
@@ -241,10 +303,28 @@ A: 静摩擦和动摩擦系数在同一行且默认值都是0.0，为避免歧�
 
 ---
 
-**版本**: 1.0.1
+**版本**: 1.1.0
 **最后更新**: 2025-11-07
 
 ## 📋 更新日志
+
+### v1.1.0 (2025-11-07) - 动画生成功能
+
+**新功能**：
+- 🎬 自动动画生成：d3plot → MP4动画
+- 🎨 7种相机视角和6种云图变量
+- 🔄 异步任务队列with实时进度监控
+- 📊 任务列表管理和在线视频播放器
+
+**技术架构**：
+- Python threading异步处理
+- LS-PrePost CFILE脚本自动生成
+- FastAPI RESTful API（4个新端点）
+- HTML5 video + Bootstrap 5 UI
+
+**文档**：
+- 完整用户指南: `docs/animation_user_guide.md`
+- 配置模板: `backend/config.json`
 
 ### v1.0.1 (2025-11-07) - 关键Bug修复版本
 

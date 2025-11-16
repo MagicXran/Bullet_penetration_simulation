@@ -1,0 +1,379 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>计算结果 - LS-DYNA仿真系统</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+
+    <style>
+        body {
+            background-color: #f8f9fa;
+            min-height: 100vh;
+            padding-top: 20px;
+            padding-bottom: 40px;
+        }
+        .main-container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .task-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .status-card {
+            border: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .status-pending { background: #fff3cd; border-left: 4px solid #ffc107; }
+        .status-running { background: #cfe2ff; border-left: 4px solid #0d6efd; }
+        .status-completed { background: #d1e7dd; border-left: 4px solid #198754; }
+        .status-failed { background: #f8d7da; border-left: 4px solid #dc3545; }
+        .param-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+        .result-section {
+            display: none;
+        }
+        .pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <!-- 任务头部 -->
+        <div class="task-header">
+            <h2 class="mb-3">
+                <i class="bi bi-graph-up-arrow"></i>
+                计算结果
+            </h2>
+            <p class="mb-2">
+                <strong>任务ID:</strong> <span id="taskIdDisplay">加载中...</span>
+            </p>
+            <p class="mb-0 small opacity-75" id="taskStatus">
+                正在查询任务状态...
+            </p>
+        </div>
+
+        <!-- 状态卡片 -->
+        <div class="card status-card" id="statusCard">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border text-primary me-3 pulse" role="status" id="statusSpinner">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <div class="flex-grow-1">
+                        <h5 class="card-title mb-1" id="statusTitle">正在加载任务信息...</h5>
+                        <p class="card-text text-muted mb-0" id="statusDescription">
+                            请稍候...
+                        </p>
+                    </div>
+                    <div>
+                        <span class="badge bg-secondary" id="statusBadge">加载中</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 错误信息 -->
+        <div class="alert alert-danger d-none" id="errorAlert">
+            <h6 class="alert-heading">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                执行失败
+            </h6>
+            <p class="mb-0" id="errorMessage"></p>
+        </div>
+
+        <!-- 输入参数 -->
+        <div class="card mb-4" id="paramsSection">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">
+                    <i class="bi bi-sliders"></i>
+                    输入参数
+                </h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-bordered param-table mb-0">
+                    <thead>
+                        <tr>
+                            <th>参数名称</th>
+                            <th>数值</th>
+                            <th>单位</th>
+                        </tr>
+                    </thead>
+                    <tbody id="paramsTableBody">
+                        <tr>
+                            <td colspan="3" class="text-center text-muted">暂无数据</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 结果文件 -->
+        <div class="card mb-4 result-section" id="resultSection">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-file-earmark-check-fill"></i>
+                    生成结果
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="mb-3">
+                    <strong>输出文件:</strong>
+                    <span id="outputFilePath" class="text-muted">-</span>
+                </p>
+                <p class="mb-3">
+                    <strong>完成时间:</strong>
+                    <span id="completeTime" class="text-muted">-</span>
+                </p>
+                <div class="d-grid gap-2">
+                    <button class="btn btn-primary btn-lg" id="downloadBtn" onclick="downloadResult()">
+                        <i class="bi bi-download"></i>
+                        下载K文件
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary" onclick="window.history.back()">
+                <i class="bi bi-arrow-left"></i>
+                返回
+            </button>
+            <button class="btn btn-outline-primary" id="refreshBtn" onclick="loadTaskStatus()">
+                <i class="bi bi-arrow-clockwise"></i>
+                刷新状态
+            </button>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api';
+        let currentTaskId = null;
+        let pollingInterval = null;
+
+        // 状态映射
+        const STATUS_MAP = {
+            0: { name: '待提交', badge: 'secondary', class: 'status-pending' },
+            1: { name: '排队中', badge: 'warning', class: 'status-pending' },
+            2: { name: '运行中', badge: 'primary', class: 'status-running' },
+            3: { name: '已完成', badge: 'success', class: 'status-completed' },
+            4: { name: '失败', badge: 'danger', class: 'status-failed' },
+            5: { name: '中止', badge: 'dark', class: 'status-failed' }
+        };
+
+        // 获取URL参数
+        function getQueryParam(param) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(param);
+        }
+
+        // 渲染参数表格
+        function renderParams(params) {
+            const tbody = document.getElementById('paramsTableBody');
+            const rows = [
+                { name: '弹丸初速度', value: params.velocity_z, unit: 'm/s' },
+                { name: '弹丸屈服强度', value: params.bullet_yield_stress, unit: 'MPa' },
+                { name: '靶板屈服强度', value: params.target_yield_stress, unit: 'MPa' },
+                { name: '静摩擦系数', value: params.friction_static, unit: '-' },
+                { name: '动摩擦系数', value: params.friction_dynamic, unit: '-' },
+                { name: '仿真终止时间', value: params.simulation_endtime, unit: 'µs' }
+            ];
+
+            tbody.innerHTML = rows.map(row => `
+                <tr>
+                    <td>${row.name}</td>
+                    <td><strong>${row.value}</strong></td>
+                    <td>${row.unit}</td>
+                </tr>
+            `).join('');
+        }
+
+        // 更新状态显示
+        function updateStatusDisplay(task) {
+            const status = task.status;
+            const statusInfo = STATUS_MAP[status] || { name: '未知', badge: 'secondary', class: '' };
+
+            // 更新状态卡片样式
+            const statusCard = document.getElementById('statusCard');
+            statusCard.className = `card status-card ${statusInfo.class}`;
+
+            // 更新状态徽章
+            const statusBadge = document.getElementById('statusBadge');
+            statusBadge.className = `badge bg-${statusInfo.badge}`;
+            statusBadge.textContent = statusInfo.name;
+
+            // 更新标题和描述
+            const statusTitle = document.getElementById('statusTitle');
+            const statusDescription = document.getElementById('statusDescription');
+            const statusSpinner = document.getElementById('statusSpinner');
+
+            switch (status) {
+                case 0:
+                case 1:
+                    statusTitle.textContent = '任务等待中';
+                    statusDescription.textContent = '任务已创建，等待开始执行...';
+                    statusSpinner.style.display = 'block';
+                    break;
+                case 2:
+                    statusTitle.textContent = '正在计算中';
+                    statusDescription.textContent = 'K文件正在生成，请稍候...';
+                    statusSpinner.style.display = 'block';
+                    break;
+                case 3:
+                    statusTitle.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i> 计算完成';
+                    statusDescription.textContent = 'K文件已成功生成，可以下载了！';
+                    statusSpinner.style.display = 'none';
+                    document.getElementById('resultSection').style.display = 'block';
+                    stopPolling();
+                    break;
+                case 4:
+                    statusTitle.innerHTML = '<i class="bi bi-x-circle-fill text-danger"></i> 计算失败';
+                    statusDescription.textContent = '任务执行过程中发生错误';
+                    statusSpinner.style.display = 'none';
+                    document.getElementById('errorAlert').classList.remove('d-none');
+                    document.getElementById('errorMessage').textContent = task.error_message || '未知错误';
+                    stopPolling();
+                    break;
+                case 5:
+                    statusTitle.textContent = '任务已中止';
+                    statusDescription.textContent = '任务被手动中止';
+                    statusSpinner.style.display = 'none';
+                    stopPolling();
+                    break;
+            }
+
+            // 更新头部状态
+            document.getElementById('taskStatus').textContent = `当前状态：${statusInfo.name}`;
+        }
+
+        // 加载任务状态
+        async function loadTaskStatus() {
+            if (!currentTaskId) {
+                alert('错误：缺少task_id参数');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/task/${currentTaskId}`);
+
+                if (response.status === 404) {
+                    alert('任务不存在，请先在输入页面创建任务');
+                    window.location.href = `input.html?task_id=${currentTaskId}`;
+                    return;
+                }
+
+                if (!response.ok) {
+                    throw new Error('查询任务失败');
+                }
+
+                const task = await response.json();
+
+                // 显示参数
+                if (task.input_params) {
+                    renderParams(task.input_params);
+                }
+
+                // 更新状态显示
+                updateStatusDisplay(task);
+
+                // 如果已完成，显示结果
+                if (task.status === 3 && task.output_file_path) {
+                    document.getElementById('outputFilePath').textContent = task.output_file_path;
+                    document.getElementById('completeTime').textContent = task.end_time || '-';
+
+                    // 提取文件名用于下载
+                    const filename = task.output_file_path.split('\\').pop().split('/').pop();
+                    document.getElementById('downloadBtn').setAttribute('data-filename', filename);
+                }
+
+            } catch (error) {
+                console.error('加载任务状态失败:', error);
+                alert('加载任务状态失败: ' + error.message);
+            }
+        }
+
+        // 开始轮询
+        function startPolling() {
+            if (pollingInterval) return;
+
+            pollingInterval = setInterval(async () => {
+                await loadTaskStatus();
+            }, 3000); // 每3秒查询一次
+        }
+
+        // 停止轮询
+        function stopPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+        }
+
+        // 下载结果文件
+        function downloadResult() {
+            const btn = document.getElementById('downloadBtn');
+            const filename = btn.getAttribute('data-filename');
+
+            if (!filename) {
+                alert('文件名未找到');
+                return;
+            }
+
+            const url = `${API_BASE}/download/${filename}`;
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        // 页面加载完成
+        document.addEventListener('DOMContentLoaded', async function() {
+            // 获取task_id
+            currentTaskId = getQueryParam('task_id');
+
+            if (!currentTaskId) {
+                alert('错误：缺少task_id参数');
+                document.getElementById('taskIdDisplay').textContent = '未提供';
+                return;
+            }
+
+            // 显示task_id
+            document.getElementById('taskIdDisplay').textContent = currentTaskId;
+
+            // 加载任务状态
+            await loadTaskStatus();
+
+            // 开始轮询（只有未完成的任务才轮询）
+            startPolling();
+        });
+
+        // 页面卸载时停止轮询
+        window.addEventListener('beforeunload', function() {
+            stopPolling();
+        });
+    </script>
+</body>
+</html>

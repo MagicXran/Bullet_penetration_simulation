@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "LS-PrePost动画生成系统配置文件",
+
+  "lsprepost_executable": "C:\\Program Files\\LSTC\\LS-PrePost 4.9\\lsprepost4.9_x64.exe",
+
+  "animation_output_dir": "generated/animations",
+
+  "default_resolution": [1920, 1080],
+
+  "default_fps": 30,
+
+  "default_view": "isometric",
+
+  "default_fringe_variable": "stress",
+
+  "platform_a": {
+    "enabled": true,
+    "base_url": "http://platform-a.example.com",
+    "task_insert_endpoint": "/simulApi/web-app/task-insert/",
+    "task_update_endpoint": "/simulApi/web-app/task-update/",
+    "timeout": 10,
+    "sync_interval": 5
+  },
+
+  "_comments": {
+    "lsprepost_executable": "LS-PrePost可执行文件的绝对路径。Windows示例: C:\\Program Files\\LSTC\\LS-PrePost 4.9\\lsprepost4.9_x64.exe, Linux示例: /usr/local/lsprepost/lspp",
+    "animation_output_dir": "动画输出目录（相对于项目根目录）",
+    "default_resolution": "默认视频分辨率 [宽度, 高度]",
+    "default_fps": "默认帧率（15-60）",
+    "default_view": "默认视角: isometric, front, back, top, bottom, left, right",
+    "default_fringe_variable": "默认云图变量: stress, strain, displacement, velocity, acceleration, plastic_strain",
+    "platform_a": {
+      "enabled": "是否启用平台A集成（true/false）。设置为false可独立使用本系统",
+      "base_url": "平台A的基础URL地址。例如: http://192.168.1.100:8080",
+      "task_insert_endpoint": "平台A的任务插入接口路径",
+      "task_update_endpoint": "平台A的任务状态更新接口路径",
+      "timeout": "HTTP请求超时时间（秒）",
+      "sync_interval": "后台同步任务状态的间隔时间（秒）"
+    }
+  },
+
+  "_setup_instructions": {
+    "step1": "安装LS-PrePost软件",
+    "step2": "找到lsprepost可执行文件的完整路径",
+    "step3": "将上面的路径填入 lsprepost_executable 配置项",
+    "step4": "确保路径中的反斜杠正确转义（Windows使用双反斜杠 \\\\ 或单斜杠 /）",
+    "step5": "保存此文件为 backend/config.json",
+    "step6": "启动后端服务: python backend/app.py"
+  },
+
+  "_troubleshooting": {
+    "error_file_not_found": "如果报错'配置文件不存在'，请确保此文件保存在 backend/config.json",
+    "error_lsprepost_not_found": "如果报错'LS-PrePost可执行文件不存在'，请检查 lsprepost_executable 路径是否正确",
+    "error_permission_denied": "如果报错'权限拒绝'，请确保LS-PrePost有执行权限（Linux: chmod +x）"
+  }
+}

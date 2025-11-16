@@ -1,0 +1,31 @@
+$# LS-PrePost手动测试脚本
+$# 生成时间: 2025-11-07
+$# 用途: 验证动画生成功能
+$#
+$# 使用方法:
+$# lsprepost4.8_x64.exe c=test_animation.cfile
+
+$# 打开d3plot文件
+*OPEN "G:\\test1\\d3plot"
+
+$# 设置云图变量（应力 - Effective Stress）
+*FRINGE 1 1
+
+$# 设置相机视角（等角视图）
+*VIEW ISOMETRIC
+
+$# 自动缩放模型到合适大小
+*SCALE AUTO
+
+$# 设置颜色方案（彩虹色谱）
+*PALETTE RAINBOW
+
+$# 输出MP4动画
+$# 格式: *OUTPUT MOVIE "路径" 宽度 高度 帧率
+*OUTPUT MOVIE "G:\\test1\\test_animation.mp4" 1920 1080 30
+
+$# 播放并渲染动画
+*ANIMATE
+
+$# 完成后退出
+*QUIT

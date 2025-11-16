@@ -314,4 +314,307 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 定期刷新历史（每30秒）
     setInterval(loadHistory, 30000);
+
+    // 动画表单提交
+    document.getElementById('animationForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        createAnimationTask();
+    });
+
+    // 加载动画任务列表
+    loadAnimationTasks();
+
+    // 定期刷新动画任务列表（每5秒）
+    setInterval(loadAnimationTasks, 5000);
 });
+
+
+// ==================== 动画生成相关函数 ====================
+
+// 活动任务轮询器（存储轮询定时器ID）
+const activeTaskPollers = {};
+
+// 创建动画任务
+async function createAnimationTask() {
+    const btn = document.getElementById('createAnimationBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 创建中...';
+
+    try {
+        // 获取表单数据
+        const d3plotPath = document.getElementById('d3plot_path').value;
+        const view = document.getElementById('animation_view').value;
+        const fringeVariable = document.getElementById('animation_fringe').value;
+        const resolutionStr = document.getElementById('animation_resolution').value;
+        const fps = parseInt(document.getElementById('animation_fps').value);
+
+        const resolution = resolutionStr.split(',').map(v => parseInt(v));
+
+        const requestData = {
+            d3plot_path: d3plotPath,
+            view: view,
+            fringe_variable: fringeVariable,
+            resolution: resolution,
+            fps: fps,
+            output_format: 'mp4'
+        };
+
+        const response = await fetch(`${API_BASE}/animation/generate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || '创建任务失败');
+        }
+
+        const task = await response.json();
+
+        showToast('成功', `动画任务已创建！任务ID: ${task.task_id.substring(0, 8)}`, 'success');
+
+        // 清空表单
+        document.getElementById('d3plot_path').value = '';
+
+        // 立即刷新任务列表
+        await loadAnimationTasks();
+
+        // 开始轮询这个任务的状态
+        startTaskPolling(task.task_id);
+
+    } catch (error) {
+        showToast('错误', error.message, 'danger');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-play-circle"></i> 开始生成动画';
+    }
+}
+
+// 加载动画任务列表
+async function loadAnimationTasks() {
+    try {
+        const response = await fetch(`${API_BASE}/animation/list`);
+        if (!response.ok) {
+            // 如果服务未配置，静默失败
+            if (response.status === 503) {
+                console.log('动画生成功能未配置');
+                return;
+            }
+            throw new Error('获取任务列表失败');
+        }
+
+        const tasks = await response.json();
+        renderAnimationTasks(tasks);
+
+        // 为处理中的任务启动轮询
+        tasks.forEach(task => {
+            if (task.status === 'processing' && !activeTaskPollers[task.task_id]) {
+                startTaskPolling(task.task_id);
+            }
+        });
+
+    } catch (error) {
+        console.error('加载动画任务列表失败:', error);
+    }
+}
+
+// 渲染动画任务列表
+function renderAnimationTasks(tasks) {
+    const container = document.getElementById('animationTasksContainer');
+
+    if (!tasks || tasks.length === 0) {
+        container.innerHTML = '<p class="text-center text-muted">暂无动画任务</p>';
+        return;
+    }
+
+    const html = tasks.map(task => {
+        const statusBadge = getStatusBadge(task.status);
+        const progressBar = task.status === 'processing' ? `
+            <div class="progress mt-2" style="height: 5px;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated"
+                     role="progressbar"
+                     style="width: ${task.progress}%"></div>
+            </div>
+        ` : '';
+
+        const actions = task.status === 'completed' ? `
+            <button class="btn btn-sm btn-primary" onclick="playVideo('${task.task_id}')">
+                <i class="bi bi-play-fill"></i> 播放
+            </button>
+            <button class="btn btn-sm btn-success" onclick="downloadVideo('${task.task_id}')">
+                <i class="bi bi-download"></i> 下载
+            </button>
+        ` : task.status === 'failed' ? `
+            <span class="text-danger small">
+                <i class="bi bi-exclamation-circle"></i> ${task.error_message || '生成失败'}
+            </span>
+        ` : `
+            <span class="text-muted small">
+                <span class="spinner-border spinner-border-sm"></span> 处理中...
+            </span>
+        `;
+
+        return `
+            <div class="card mb-3" id="task-${task.task_id}">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <h6 class="card-subtitle mb-2">
+                                <i class="bi bi-film"></i>
+                                任务 ${task.task_id.substring(0, 8)}
+                                ${statusBadge}
+                            </h6>
+                            <p class="card-text small text-muted mb-1">
+                                <strong>d3plot:</strong> ${task.d3plot_path}
+                            </p>
+                            <p class="card-text small text-muted mb-1">
+                                <strong>视角:</strong> ${task.config.view} |
+                                <strong>变量:</strong> ${task.config.fringe_variable} |
+                                <strong>分辨率:</strong> ${task.config.resolution[0]}x${task.config.resolution[1]}
+                            </p>
+                            <p class="card-text small text-muted mb-0">
+                                <i class="bi bi-clock"></i> 创建于 ${task.created_at}
+                                ${task.completed_at ? ` | 完成于 ${task.completed_at}` : ''}
+                            </p>
+                            ${progressBar}
+                        </div>
+                        <div class="ms-3">
+                            ${actions}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = html;
+}
+
+// 获取状态徽章
+function getStatusBadge(status) {
+    const badges = {
+        'pending': '<span class="badge bg-secondary">等待中</span>',
+        'processing': '<span class="badge bg-primary">处理中</span>',
+        'completed': '<span class="badge bg-success">已完成</span>',
+        'failed': '<span class="badge bg-danger">失败</span>'
+    };
+    return badges[status] || '<span class="badge bg-secondary">未知</span>';
+}
+
+// 开始轮询任务状态
+function startTaskPolling(taskId) {
+    // 如果已经在轮询，不重复启动
+    if (activeTaskPollers[taskId]) {
+        return;
+    }
+
+    console.log(`开始轮询任务 ${taskId}`);
+
+    // 每3秒查询一次状态
+    const pollerId = setInterval(async () => {
+        try {
+            const response = await fetch(`${API_BASE}/animation/status/${taskId}`);
+            if (!response.ok) {
+                throw new Error('查询任务状态失败');
+            }
+
+            const task = await response.json();
+
+            // 如果任务已完成或失败，停止轮询
+            if (task.status === 'completed' || task.status === 'failed') {
+                console.log(`任务 ${taskId} 状态: ${task.status}，停止轮询`);
+                stopTaskPolling(taskId);
+
+                // 刷新任务列表
+                await loadAnimationTasks();
+
+                // 显示通知
+                if (task.status === 'completed') {
+                    showToast('成功', `动画生成完成！任务 ${taskId.substring(0, 8)}`, 'success');
+                } else {
+                    showToast('失败', `动画生成失败: ${task.error_message}`, 'danger');
+                }
+            } else {
+                // 更新任务卡片（仅更新进度）
+                const taskCard = document.getElementById(`task-${taskId}`);
+                if (taskCard) {
+                    const progressBar = taskCard.querySelector('.progress-bar');
+                    if (progressBar) {
+                        progressBar.style.width = `${task.progress}%`;
+                    }
+                }
+            }
+
+        } catch (error) {
+            console.error(`轮询任务 ${taskId} 失败:`, error);
+            // 出错后停止轮询
+            stopTaskPolling(taskId);
+        }
+    }, 3000);
+
+    activeTaskPollers[taskId] = pollerId;
+}
+
+// 停止轮询任务状态
+function stopTaskPolling(taskId) {
+    if (activeTaskPollers[taskId]) {
+        clearInterval(activeTaskPollers[taskId]);
+        delete activeTaskPollers[taskId];
+        console.log(`停止轮询任务 ${taskId}`);
+    }
+}
+
+// 播放视频
+async function playVideo(taskId) {
+    try {
+        const response = await fetch(`${API_BASE}/animation/status/${taskId}`);
+        if (!response.ok) {
+            throw new Error('获取任务信息失败');
+        }
+
+        const task = await response.json();
+
+        if (task.status !== 'completed') {
+            showToast('提示', '动画尚未完成', 'warning');
+            return;
+        }
+
+        // 设置视频源
+        const videoUrl = `${API_BASE}/animation/download/${taskId}`;
+        const videoPlayer = document.getElementById('videoPlayer');
+        const videoSource = videoPlayer.querySelector('source');
+        videoSource.src = videoUrl;
+        videoPlayer.load();
+
+        // 设置下载链接
+        const downloadBtn = document.getElementById('downloadVideoBtn');
+        downloadBtn.href = videoUrl;
+        downloadBtn.download = `animation_${taskId.substring(0, 8)}.mp4`;
+
+        // 显示模态框
+        const videoModal = new bootstrap.Modal(document.getElementById('videoModal'));
+        videoModal.show();
+
+        // 自动播放
+        videoPlayer.play();
+
+    } catch (error) {
+        showToast('错误', error.message, 'danger');
+    }
+}
+
+// 下载视频
+function downloadVideo(taskId) {
+    const url = `${API_BASE}/animation/download/${taskId}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `animation_${taskId.substring(0, 8)}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast('提示', '视频下载已开始', 'info');
+}
+

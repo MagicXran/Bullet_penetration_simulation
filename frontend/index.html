@@ -271,6 +271,143 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <!-- 动画生成 -->
+                    <hr class="my-5">
+
+                    <h3 class="mb-3">
+                        <i class="bi bi-play-circle-fill text-danger"></i>
+                        仿真动画生成
+                    </h3>
+
+                    <p class="text-muted">
+                        将LS-DYNA仿真结果（d3plot文件）自动渲染为MP4动画，支持自定义视角和云图变量。
+                    </p>
+
+                    <!-- 动画生成表单 -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-primary text-white">
+                            <i class="bi bi-film"></i> 创建新动画任务
+                        </div>
+                        <div class="card-body">
+                            <form id="animationForm">
+                                <div class="row">
+                                    <!-- d3plot路径 -->
+                                    <div class="col-md-12 mb-3">
+                                        <label for="d3plot_path" class="form-label">
+                                            <strong>d3plot文件路径</strong>
+                                            <small class="text-muted">(服务器可访问的绝对路径)</small>
+                                        </label>
+                                        <input type="text"
+                                               class="form-control"
+                                               id="d3plot_path"
+                                               placeholder="例如: D:\Simulations\bullet_sim\d3plot"
+                                               required>
+                                        <div class="form-text">
+                                            请输入服务器上d3plot文件的完整路径
+                                        </div>
+                                    </div>
+
+                                    <!-- 视角选择 -->
+                                    <div class="col-md-6 mb-3">
+                                        <label for="animation_view" class="form-label">
+                                            <strong>相机视角</strong>
+                                        </label>
+                                        <select class="form-select" id="animation_view">
+                                            <option value="isometric" selected>等角视图 (Isometric)</option>
+                                            <option value="front">正视图 (Front)</option>
+                                            <option value="back">后视图 (Back)</option>
+                                            <option value="top">俯视图 (Top)</option>
+                                            <option value="bottom">仰视图 (Bottom)</option>
+                                            <option value="left">左视图 (Left)</option>
+                                            <option value="right">右视图 (Right)</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- 云图变量 -->
+                                    <div class="col-md-6 mb-3">
+                                        <label for="animation_fringe" class="form-label">
+                                            <strong>云图变量</strong>
+                                        </label>
+                                        <select class="form-select" id="animation_fringe">
+                                            <option value="stress" selected>应力 (Stress)</option>
+                                            <option value="strain">应变 (Strain)</option>
+                                            <option value="displacement">位移 (Displacement)</option>
+                                            <option value="velocity">速度 (Velocity)</option>
+                                            <option value="acceleration">加速度 (Acceleration)</option>
+                                            <option value="plastic_strain">塑性应变 (Plastic Strain)</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- 分辨率 -->
+                                    <div class="col-md-6 mb-3">
+                                        <label for="animation_resolution" class="form-label">
+                                            <strong>视频分辨率</strong>
+                                        </label>
+                                        <select class="form-select" id="animation_resolution">
+                                            <option value="1920,1080" selected>1920x1080 (Full HD)</option>
+                                            <option value="1280,720">1280x720 (HD)</option>
+                                            <option value="3840,2160">3840x2160 (4K)</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- 帧率 -->
+                                    <div class="col-md-6 mb-3">
+                                        <label for="animation_fps" class="form-label">
+                                            <strong>帧率 (FPS)</strong>
+                                        </label>
+                                        <select class="form-select" id="animation_fps">
+                                            <option value="24">24 fps</option>
+                                            <option value="30" selected>30 fps</option>
+                                            <option value="60">60 fps</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="d-grid gap-2">
+                                    <button type="submit" class="btn btn-primary btn-lg" id="createAnimationBtn">
+                                        <i class="bi bi-play-circle"></i> 开始生成动画
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- 动画任务列表 -->
+                    <h4 class="mb-3">
+                        <i class="bi bi-list-task"></i>
+                        动画任务列表
+                    </h4>
+
+                    <div id="animationTasksContainer">
+                        <p class="text-center text-muted">暂无动画任务</p>
+                    </div>
+
+                    <!-- 视频播放器 (Modal) -->
+                    <div class="modal fade" id="videoModal" tabindex="-1">
+                        <div class="modal-dialog modal-xl">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">
+                                        <i class="bi bi-play-btn"></i> 动画播放
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <video id="videoPlayer" controls style="width: 100%; max-height: 70vh;">
+                                        <source src="" type="video/mp4">
+                                        您的浏览器不支持视频播放
+                                    </video>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                                    <a id="downloadVideoBtn" href="#" class="btn btn-primary" download>
+                                        <i class="bi bi-download"></i> 下载视频
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
