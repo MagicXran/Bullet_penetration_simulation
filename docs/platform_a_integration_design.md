@@ -1,8 +1,8 @@
 ﻿# 平台A集成改造方案 - 详细设计文档
 
-**版本**: 1.0
-**日期**: 2025-11-11
-**状态**: 已实现
+**版本**: 2.0
+**日期**: 2025-11-16
+**状态**: 已实现（支持双模式运行）
 
 ---
 
@@ -13,6 +13,52 @@
 1. **平台A → 平台B**: 通过URL参数传递task_id，跳转到输入/输出页面
 2. **平台B → 平台A**: 通过REST API上报任务状态（task-insert和task-update）
 3. **向后兼容**: 保持原有独立使用模式完全可用
+4. **双模式隔离**: 独立任务和平台A任务共存但数据隔离，独立任务不会被同步
+
+---
+
+## 1.1 双模式运行架构
+
+### 运行模式说明
+
+系统支持三种运行模式（通过`config.json`的`platform_a.mode`配置）：
+
+| 模式 | 说明 | 适用场景 |
+|------|------|----------|
+| `standalone` | 仅独立模式 | 完全脱离平台A，纯本地使用 |
+| `platform_a_only` | 仅平台A模式 | 所有任务必须由平台A发起 |
+| `hybrid` | 双模式并存（默认） | 独立任务和平台A任务共存 |
+
+### 数据隔离机制
+
+通过数据库`source`字段实现任务来源区分：
+
+```sql
+CREATE TABLE tasks (
+    task_id TEXT PRIMARY KEY,
+    source TEXT NOT NULL DEFAULT 'platform_a',  -- 关键字段
+    ...
+);
+```
+
+| 字段值 | 来源 | 是否同步到平台A | task_id格式 |
+|--------|------|----------------|-------------|
+| `standalone` | 用户通过`index.html`独立创建 | 否 | `standalone_<timestamp>_<uuid>` |
+| `platform_a` | 平台A通过URL参数传递 | 是 | 由平台A提供 |
+
+**调度器过滤逻辑**（关键代码）：
+
+```python
+# backend/database.py line 296-303
+cursor.execute("""
+    SELECT * FROM tasks
+    WHERE platform_a_synced = 0
+      AND source = 'platform_a'  -- ← 只同步平台A任务
+      AND sync_retry_count < 3
+    ORDER BY updated_at ASC
+    LIMIT ?
+""", (limit,))
+```
 
 ---
 

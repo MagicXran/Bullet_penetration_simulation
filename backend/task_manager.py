@@ -46,7 +46,8 @@ class TaskManager:
     def create_or_get_task(
         self,
         task_id: str,
-        input_params: Optional[Dict[str, Any]] = None
+        input_params: Optional[Dict[str, Any]] = None,
+        source: str = 'platform_a'
     ) -> Dict[str, Any]:
         """
         创建任务或获取已存在的任务
@@ -56,8 +57,9 @@ class TaskManager:
         - 如果task_id不存在：创建新任务（input_params为必需）
 
         Args:
-            task_id: 任务ID（由平台A传递）
+            task_id: 任务ID
             input_params: 输入参数（新建任务时必需）
+            source: 任务来源 ('standalone' | 'platform_a')
 
         Returns:
             任务字典
@@ -77,7 +79,7 @@ class TaskManager:
             )
 
         # 创建新任务
-        success = self.db.create_task(task_id, input_params)
+        success = self.db.create_task(task_id, input_params, source=source)
         if not success:
             # 理论上不会到这里（因为前面已经查过），但保险起见再查一次
             return self.db.get_task(task_id)
@@ -100,7 +102,8 @@ class TaskManager:
     def submit_task(
         self,
         task_id: str,
-        input_params: Dict[str, Any]
+        input_params: Dict[str, Any],
+        source: str = 'platform_a'
     ) -> Dict[str, Any]:
         """
         提交任务（用户点击"提交计算"按钮时调用）
@@ -108,12 +111,13 @@ class TaskManager:
         Args:
             task_id: 任务ID
             input_params: 输入参数
+            source: 任务来源 ('standalone' | 'platform_a')
 
         Returns:
             更新后的任务字典
         """
         # 确保任务存在
-        task = self.create_or_get_task(task_id, input_params)
+        task = self.create_or_get_task(task_id, input_params, source=source)
 
         # 记录提交时间
         submission_time = datetime.now().isoformat()

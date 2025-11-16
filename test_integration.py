@@ -526,6 +526,124 @@ def test_scheduler():
         return False
 
 
+# ==================== 测试6：双模式隔离 ====================
+
+def test_dual_mode():
+    """测试双模式隔离：独立任务不会被同步到平台A"""
+    print_test_header("测试6：双模式隔离")
+
+    test_db_path = "backend/tasks.db"
+    test_config_path = "backend/test_config.json"
+
+    # 删除旧数据库
+    if os.path.exists(test_db_path):
+        os.remove(test_db_path)
+
+    try:
+        # 创建测试配置
+        test_config = {
+            "platform_a": {
+                "enabled": True,
+                "mode": "hybrid",
+                "base_url": "http://mock-platform-a.com",
+                "task_insert_endpoint": "/simulApi/web-app/task-insert/",
+                "task_update_endpoint": "/simulApi/web-app/task-update/",
+                "timeout": 5,
+                "sync_interval": 2
+            }
+        }
+
+        with open(test_config_path, 'w', encoding='utf-8') as f:
+            json.dump(test_config, f, ensure_ascii=False, indent=2)
+        print_success("测试配置文件创建成功")
+
+        tm = TaskManager(test_db_path)
+
+        # 创建1个独立任务和2个平台A任务
+        standalone_task_id = "standalone_test_001"
+        platform_task_id_1 = "platform_a_test_001"
+        platform_task_id_2 = "platform_a_test_002"
+
+        params = {"velocity_z": 1500.0, "bullet_yield_stress": 900.0}
+
+        # 提交独立任务
+        tm.submit_task(standalone_task_id, params, source='standalone')
+        tm.start_task(standalone_task_id)
+        tm.complete_task(standalone_task_id, "generated/standalone_test.k")
+        print_success(f"创建独立任务: {standalone_task_id}")
+
+        # 提交平台A任务
+        tm.submit_task(platform_task_id_1, params, source='platform_a')
+        tm.start_task(platform_task_id_1)
+        tm.complete_task(platform_task_id_1, "generated/platform_a_test_1.k")
+        print_success(f"创建平台A任务: {platform_task_id_1}")
+
+        tm.submit_task(platform_task_id_2, params, source='platform_a')
+        tm.start_task(platform_task_id_2)
+        tm.complete_task(platform_task_id_2, "generated/platform_a_test_2.k")
+        print_success(f"创建平台A任务: {platform_task_id_2}")
+
+        # 验证数据库中有3个任务
+        all_tasks = tm.db.get_all_tasks(limit=10)
+        assert len(all_tasks) >= 3, f"应该有至少3个任务，实际有{len(all_tasks)}个"
+        print_success(f"数据库中共有 {len(all_tasks)} 个任务")
+
+        # 验证未同步任务只有2个（仅平台A任务）
+        unsynced = tm.get_unsynced_tasks()
+        assert len(unsynced) == 2, f"应该有2个未同步的平台A任务，实际有{len(unsynced)}个"
+        print_success(f"未同步任务数: {len(unsynced)} (仅平台A任务)")
+
+        # 验证未同步任务不包含独立任务
+        unsynced_ids = [task['task_id'] for task in unsynced]
+        assert standalone_task_id not in unsynced_ids, "独立任务不应该出现在未同步列表中"
+        assert platform_task_id_1 in unsynced_ids, "平台A任务1应该在未同步列表中"
+        assert platform_task_id_2 in unsynced_ids, "平台A任务2应该在未同步列表中"
+        print_success("独立任务已被正确过滤，不会被同步")
+
+        # 验证source字段
+        standalone_task = tm.get_task(standalone_task_id)
+        assert standalone_task['source'] == 'standalone', "独立任务source字段应为standalone"
+        print_success(f"独立任务source验证: {standalone_task['source']}")
+
+        platform_task = tm.get_task(platform_task_id_1)
+        assert platform_task['source'] == 'platform_a', "平台A任务source字段应为platform_a"
+        print_success(f"平台A任务source验证: {platform_task['source']}")
+
+        # 使用mock测试调度器同步
+        scheduler = TaskSyncScheduler(test_config_path)
+
+        with patch.object(scheduler.sync_client, 'sync_task_status', return_value=(True, None)):
+            print_info("手动触发调度器同步（模拟）...")
+            scheduler._sync_unsynced_tasks()
+
+            # 验证同步后，独立任务仍然存在且未被标记为已同步
+            standalone_task_after = tm.get_task(standalone_task_id)
+            assert standalone_task_after is not None, "独立任务应该仍然存在"
+            assert standalone_task_after['platform_a_synced'] == 0, "独立任务不应该被标记为已同步"
+            print_success("独立任务在同步后保持未同步状态（正确）")
+
+            # 验证平台A任务已被标记为同步
+            unsynced_after = tm.get_unsynced_tasks()
+            assert len(unsynced_after) == 0, "所有平台A任务应该已被同步"
+            print_success("平台A任务全部同步成功")
+
+        # 清理测试配置文件
+        if os.path.exists(test_config_path):
+            os.remove(test_config_path)
+
+        print_info("[OK] 双模式隔离测试全部通过")
+        return True
+
+    except AssertionError as e:
+        print_fail(f"测试失败: {e}")
+        return False
+    except Exception as e:
+        print_fail(f"异常: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 # ==================== 主测试函数 ====================
 
 def run_all_tests():
@@ -545,6 +663,7 @@ def run_all_tests():
     results['platform_sync'] = test_platform_sync_with_mock()
     results['end_to_end'] = test_end_to_end_workflow()
     results['scheduler'] = test_scheduler()
+    results['dual_mode'] = test_dual_mode()
 
     # 汇总结果
     print_test_header("测试结果汇总")

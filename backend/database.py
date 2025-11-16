@@ -58,6 +58,7 @@ class Database:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS tasks (
                     task_id TEXT PRIMARY KEY,
+                    source TEXT NOT NULL DEFAULT 'platform_a',
                     input_params TEXT NOT NULL,
                     output_file_path TEXT,
                     status INTEGER NOT NULL DEFAULT 0,
@@ -80,7 +81,12 @@ class Database:
 
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_platform_a_synced
-                ON tasks(platform_a_synced, status)
+                ON tasks(platform_a_synced, source, status)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_source
+                ON tasks(source)
             """)
 
             cursor.execute("""
@@ -91,14 +97,16 @@ class Database:
     def create_task(
         self,
         task_id: str,
-        input_params: Dict[str, Any]
+        input_params: Dict[str, Any],
+        source: str = 'platform_a'
     ) -> bool:
         """
         创建新任务
 
         Args:
-            task_id: 任务ID（由平台A传递）
+            task_id: 任务ID
             input_params: 输入参数字典
+            source: 任务来源 ('standalone' | 'platform_a')
 
         Returns:
             是否创建成功
@@ -110,10 +118,10 @@ class Database:
             try:
                 cursor.execute("""
                     INSERT INTO tasks (
-                        task_id, input_params, status,
+                        task_id, source, input_params, status,
                         created_at, updated_at
-                    ) VALUES (?, ?, 0, ?, ?)
-                """, (task_id, json.dumps(input_params), now, now))
+                    ) VALUES (?, ?, ?, 0, ?, ?)
+                """, (task_id, source, json.dumps(input_params), now, now))
                 return True
             except sqlite3.IntegrityError:
                 # task_id已存在
@@ -275,6 +283,8 @@ class Database:
         """
         获取未同步到平台A的任务
 
+        仅返回source='platform_a'的任务，独立任务不会被同步
+
         Args:
             limit: 最大返回数量
 
@@ -286,6 +296,7 @@ class Database:
             cursor.execute("""
                 SELECT * FROM tasks
                 WHERE platform_a_synced = 0
+                  AND source = 'platform_a'
                   AND sync_retry_count < 3
                 ORDER BY updated_at ASC
                 LIMIT ?

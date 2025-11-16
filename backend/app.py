@@ -11,12 +11,14 @@ import sys
 from datetime import datetime
 from typing import Dict, List, Optional
 from pathlib import Path
+from uuid import uuid4
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 # 添加backend目录到Python路径
 sys.path.insert(0, os.path.dirname(__file__))
@@ -30,11 +32,40 @@ from task_manager import TaskManager
 from platform_sync import PlatformSyncClient
 from task_sync_scheduler import TaskSyncScheduler
 
-# 创建FastAPI应用
+# ==================== 应用生命周期管理 ====================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理器（替换on_event）"""
+    # Startup
+    global task_sync_scheduler
+    print("[INFO] 应用启动中...")
+
+    # 启动任务同步调度器
+    try:
+        task_sync_scheduler = TaskSyncScheduler()
+        task_sync_scheduler.start()
+    except Exception as e:
+        print(f"[WARNING] 任务同步调度器启动失败: {e}")
+        print("[WARNING] 平台A集成功能将不可用")
+
+    print("[INFO] 应用启动完成")
+
+    yield  # 应用运行中
+
+    # Shutdown
+    print("[INFO] 应用关闭中...")
+    if task_sync_scheduler:
+        task_sync_scheduler.shutdown()
+    print("[INFO] 应用已关闭")
+
+
+# 创建FastAPI应用（使用lifespan）
 app = FastAPI(
     title="LS-DYNA K文件参数化系统",
     description="子弹穿透仿真参数化生成系统",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # CORS配置（允许前端跨域访问）
@@ -90,38 +121,6 @@ def get_animation_generator() -> AnimationGenerator:
     return animation_generator
 
 
-# ==================== 应用生命周期事件 ====================
-
-@app.on_event("startup")
-async def startup_event():
-    """应用启动时执行"""
-    global task_sync_scheduler
-    print("[INFO] 应用启动中...")
-
-    # 启动任务同步调度器
-    try:
-        task_sync_scheduler = TaskSyncScheduler()
-        task_sync_scheduler.start()
-    except Exception as e:
-        print(f"[WARNING] 任务同步调度器启动失败: {e}")
-        print("[WARNING] 平台A集成功能将不可用")
-
-    print("[INFO] 应用启动完成")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """应用关闭时执行"""
-    global task_sync_scheduler
-    print("[INFO] 应用关闭中...")
-
-    # 关闭任务同步调度器
-    if task_sync_scheduler:
-        task_sync_scheduler.shutdown()
-
-    print("[INFO] 应用已关闭")
-
-
 # ==================== 数据模型 ====================
 
 class SimulationParameters(BaseModel):
@@ -133,15 +132,16 @@ class SimulationParameters(BaseModel):
     friction_dynamic: float = Field(..., description="动摩擦系数", ge=0.0, le=0.6)
     simulation_endtime: float = Field(..., description="仿真终止时间 (µs)", ge=10, le=100)
 
-    @validator('friction_dynamic')
-    def validate_friction(cls, v, values):
+    @field_validator('friction_dynamic')
+    @classmethod
+    def validate_friction(cls, v, info):
         """验证动摩擦不大于静摩擦"""
-        if 'friction_static' in values and v > values['friction_static']:
+        if 'friction_static' in info.data and v > info.data['friction_static']:
             raise ValueError('动摩擦系数不应大于静摩擦系数')
         return v
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "velocity_z": 1600.0,
                 "bullet_yield_stress": 1000.0,
@@ -156,6 +156,7 @@ class SimulationParameters(BaseModel):
 class GenerationResult(BaseModel):
     """生成结果模型"""
     success: bool
+    task_id: Optional[str] = None  # 任务ID（独立模式使用）
     filename: str
     file_path: str
     metadata_path: str
@@ -177,6 +178,29 @@ class ParameterInfo(BaseModel):
     description: str
 
 
+# ==================== 任务提交数据模型 ====================
+
+class TaskSubmitRequest(BaseModel):
+    """任务提交请求模型（平台A集成）"""
+    task_id: str = Field(..., min_length=8, max_length=128, description="任务ID")
+    params: SimulationParameters = Field(..., description="仿真参数")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "task_id": "platform_a_task_001",
+                "params": {
+                    "velocity_z": 1600.0,
+                    "bullet_yield_stress": 1000.0,
+                    "target_yield_stress": 800.0,
+                    "friction_static": 0.25,
+                    "friction_dynamic": 0.18,
+                    "simulation_endtime": 30.0
+                }
+            }
+        }
+
+
 # ==================== 动画生成数据模型 ====================
 
 class AnimationGenerateRequest(BaseModel):
@@ -189,7 +213,7 @@ class AnimationGenerateRequest(BaseModel):
     output_format: str = Field(default="mp4", description="输出格式: mp4, avi")
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "d3plot_path": "D:\\Simulations\\bullet_sim\\d3plot",
                 "view": "isometric",
@@ -297,7 +321,9 @@ async def validate_parameters(params: SimulationParameters):
 @app.post("/api/generate", response_model=GenerationResult)
 async def generate_k_file(params: SimulationParameters):
     """
-    生成K文件
+    生成K文件（独立模式）
+
+    创建独立任务并生成K文件，任务会被保存到数据库但不会同步到平台A
 
     Args:
         params: 仿真参数
@@ -306,6 +332,12 @@ async def generate_k_file(params: SimulationParameters):
         生成结果，包含文件路径和元数据
     """
     try:
+        tm = get_task_manager()
+
+        # 生成独立任务ID
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        task_id = f"standalone_{timestamp}_{uuid4().hex[:8]}"
+
         # 1. 验证参数
         param_dict = {
             "velocity_z": params.velocity_z,
@@ -326,14 +358,21 @@ async def generate_k_file(params: SimulationParameters):
                     "errors": critical_errors
                 })
 
-        # 2. 创建模板引擎
+        # 2. 提交独立任务（source='standalone'）
+        task = tm.submit_task(task_id, param_dict, source='standalone')
+
+        # 3. 创建模板引擎
         template_path = TEMPLATE_DIR / "1.k"
         if not template_path.exists():
+            tm.fail_task(task_id, f"模板文件不存在: {template_path}")
             raise HTTPException(status_code=500, detail=f"模板文件不存在: {template_path}")
 
         engine = KFileEngine(str(template_path))
 
-        # 3. 替换参数（可能有些参数会被跳过）
+        # 4. 开始任务
+        tm.start_task(task_id)
+
+        # 5. 替换参数（可能有些参数会被跳过）
         replace_results = engine.replace_multiple_parameters(param_dict)
 
         # 收集警告信息
@@ -345,25 +384,30 @@ async def generate_k_file(params: SimulationParameters):
                     f"原因: {skipped.get('reason', 'unknown')}"
                 )
 
-        # 4. 生成文件名
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # 6. 生成文件名
         summary = engine.get_parameter_summary()
-        filename = f"bullet_sim_{timestamp}_{summary}.k"
+        filename = f"bullet_sim_{task_id}_{summary}.k"
         output_path = GENERATED_DIR / filename
 
-        # 5. 生成K文件
+        # 7. 生成K文件
         engine.generate(str(output_path), metadata={
+            "task_id": task_id,
+            "source": "standalone",
             "user_params": param_dict,
             "validation_errors": errors
         })
 
-        # 6. 返回结果
+        # 8. 标记任务完成
+        tm.complete_task(task_id, str(output_path))
+
+        # 9. 返回结果
         success_msg = f"成功生成K文件: {filename}"
         if warnings:
             success_msg += f" (注意: {len(warnings)} 个参数被跳过)"
 
         return GenerationResult(
             success=True,
+            task_id=task_id,  # 返回独立任务ID
             filename=filename,
             file_path=str(output_path),
             metadata_path=str(output_path).replace('.k', '_metadata.json'),
@@ -376,6 +420,13 @@ async def generate_k_file(params: SimulationParameters):
     except HTTPException:
         raise
     except Exception as e:
+        # 记录失败状态
+        try:
+            if 'task_id' in locals():
+                tm = get_task_manager()
+                tm.fail_task(task_id, str(e))
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"生成K文件失败: {str(e)}")
 
 
@@ -494,10 +545,7 @@ async def get_task(task_id: str):
 
 
 @app.post("/api/task/submit")
-async def submit_task(
-    task_id: str = Field(..., description="任务ID"),
-    params: SimulationParameters = None
-):
+async def submit_task(request: TaskSubmitRequest):
     """
     提交任务（平台A集成入口）
 
@@ -509,12 +557,14 @@ async def submit_task(
     5. 更新任务状态并同步平台A
 
     Args:
-        task_id: 任务ID（由平台A传递）
-        params: 仿真参数
+        request: 任务提交请求（包含task_id和params）
 
     Returns:
         任务执行结果
     """
+    task_id = request.task_id
+    params = request.params
+
     # 验证task_id
     if not TaskManager.validate_task_id(task_id):
         raise HTTPException(status_code=400, detail=f"无效的task_id格式: {task_id}")
@@ -532,8 +582,8 @@ async def submit_task(
             "simulation_endtime": params.simulation_endtime
         }
 
-        # 1. 提交任务（记录submission_time）
-        task = tm.submit_task(task_id, param_dict)
+        # 1. 提交任务（记录submission_time，source='platform_a'）
+        task = tm.submit_task(task_id, param_dict, source='platform_a')
 
         # 2. 验证参数
         is_valid, errors = ParameterValidator.validate_parameter_set(param_dict)

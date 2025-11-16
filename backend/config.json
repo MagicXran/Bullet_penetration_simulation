@@ -15,7 +15,8 @@
   "default_fringe_variable": "stress",
 
   "platform_a": {
-    "enabled": true,
+    "enabled": false,
+    "mode": "standalone",
     "base_url": "http://platform-a.example.com",
     "task_insert_endpoint": "/simulApi/web-app/task-insert/",
     "task_update_endpoint": "/simulApi/web-app/task-update/",
@@ -32,6 +33,7 @@
     "default_fringe_variable": "默认云图变量: stress, strain, displacement, velocity, acceleration, plastic_strain",
     "platform_a": {
       "enabled": "是否启用平台A集成（true/false）。设置为false可独立使用本系统",
+      "mode": "运行模式: standalone=仅独立模式, platform_a_only=仅平台A模式, hybrid=双模式并存（推荐）",
       "base_url": "平台A的基础URL地址。例如: http://192.168.1.100:8080",
       "task_insert_endpoint": "平台A的任务插入接口路径",
       "task_update_endpoint": "平台A的任务状态更新接口路径",
