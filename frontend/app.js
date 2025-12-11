@@ -138,10 +138,11 @@ async function validateParameters() {
     }
 }
 
-// 生成K文件
+// 生成K文件 (保留用于历史记录页面的直接下载)
 async function generateKFile() {
     const data = getFormData();
     const generateBtn = document.getElementById('generateBtn');
+    if (!generateBtn) return; // 如果按钮不存在则跳过
 
     // 禁用按钮，显示加载状态
     generateBtn.disabled = true;
@@ -187,6 +188,80 @@ async function generateKFile() {
         // 恢复按钮
         generateBtn.disabled = false;
         generateBtn.innerHTML = '<i class="bi bi-file-earmark-arrow-down"></i> 生成K文件';
+    }
+}
+
+// 生成任务ID
+function generateTaskId() {
+    const now = new Date();
+    const timestamp = now.getFullYear().toString() +
+        String(now.getMonth() + 1).padStart(2, '0') +
+        String(now.getDate()).padStart(2, '0') +
+        String(now.getHours()).padStart(2, '0') +
+        String(now.getMinutes()).padStart(2, '0') +
+        String(now.getSeconds()).padStart(2, '0');
+    const random = Math.random().toString(36).substring(2, 10);
+    return `frontend_${timestamp}_${random}`;
+}
+
+// 提交计算（异步模式）
+async function submitCalculation() {
+    const data = getFormData();
+    const submitBtn = document.getElementById('submitCalcBtn');
+
+    // 禁用按钮，显示加载状态
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> 提交中...';
+
+    try {
+        // 生成任务ID
+        const taskId = generateTaskId();
+
+        // 1. 保存参数
+        const saveResponse = await fetch(`${API_BASE}/task/save`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                task_id: taskId,
+                params: data
+            })
+        });
+
+        if (!saveResponse.ok) {
+            const error = await saveResponse.json();
+            throw new Error(error.detail || '保存参数失败');
+        }
+
+        // 2. 触发执行
+        const execResponse = await fetch(`${API_BASE}/task/${taskId}/execute`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!execResponse.ok) {
+            const error = await execResponse.json();
+            throw new Error(error.detail || '触发执行失败');
+        }
+
+        // 3. 显示成功提示并跳转到结果页
+        showToast('成功', '任务已提交，正在跳转到结果页面...', 'success');
+
+        // 延迟跳转，让用户看到提示
+        setTimeout(() => {
+            window.location.href = `output.html?task_id=${taskId}`;
+        }, 500);
+
+    } catch (error) {
+        console.error('提交失败:', error);
+        showToast('错误', '提交计算失败: ' + error.message, 'error');
+
+        // 恢复按钮
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="bi bi-send-fill"></i> 提交计算';
     }
 }
 
@@ -290,10 +365,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // 验证按钮
     document.getElementById('validateBtn').addEventListener('click', validateParameters);
 
-    // 表单提交
+    // 表单提交 - 异步提交计算
     document.getElementById('paramForm').addEventListener('submit', function(e) {
         e.preventDefault();
-        generateKFile();
+        submitCalculation();
     });
 
     // 实时验证（输入变化时）
