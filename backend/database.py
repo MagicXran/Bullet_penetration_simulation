@@ -63,6 +63,7 @@ class Database:
                     output_file_path TEXT,
                     status INTEGER NOT NULL DEFAULT 0,
                     submission_time TEXT,
+                    queued_at TEXT,
                     start_time TEXT,
                     end_time TEXT,
                     error_message TEXT,
@@ -92,6 +93,19 @@ class Database:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_created_at
                 ON tasks(created_at DESC)
+            """)
+
+            # 尝试添加 queued_at 列（如果表已存在但没有该列）
+            # 必须在创建引用该列的索引之前执行
+            try:
+                cursor.execute("ALTER TABLE tasks ADD COLUMN queued_at TEXT")
+            except sqlite3.OperationalError:
+                pass  # 列已存在，忽略错误
+
+            # 创建 queued_at 相关索引（必须在 ALTER TABLE 之后）
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_status_queued
+                ON tasks(status, queued_at)
             """)
 
     def create_task(
@@ -155,7 +169,8 @@ class Database:
         start_time: Optional[str] = None,
         end_time: Optional[str] = None,
         error_message: Optional[str] = None,
-        output_file_path: Optional[str] = None
+        output_file_path: Optional[str] = None,
+        queued_at: Optional[str] = None
     ) -> bool:
         """
         更新任务状态
@@ -167,6 +182,7 @@ class Database:
             end_time: 结束时间
             error_message: 错误信息
             output_file_path: 输出文件路径
+            queued_at: 加入队列时间
 
         Returns:
             是否更新成功
@@ -195,6 +211,10 @@ class Database:
             if output_file_path is not None:
                 fields.append("output_file_path = ?")
                 values.append(output_file_path)
+
+            if queued_at is not None:
+                fields.append("queued_at = ?")
+                values.append(queued_at)
 
             # 状态变化时重置同步标志
             fields.append("platform_a_synced = 0")
@@ -321,6 +341,28 @@ class Database:
                 ORDER BY created_at DESC
                 LIMIT ?
             """, (limit,))
+
+            return [self._row_to_dict(row) for row in cursor.fetchall()]
+
+    def get_tasks_by_status(self, status: int, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        根据状态获取任务列表
+
+        Args:
+            status: 状态码 (0-待提交, 1-排队中, 2-运行中, 3-已完成, 4-失败, 5-中止)
+            limit: 最大返回数量
+
+        Returns:
+            任务列表
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM tasks
+                WHERE status = ?
+                ORDER BY queued_at ASC, updated_at ASC
+                LIMIT ?
+            """, (status, limit))
 
             return [self._row_to_dict(row) for row in cursor.fetchall()]
 

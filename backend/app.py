@@ -31,6 +31,7 @@ from animation_config import AnimationConfig, AnimationTask
 from task_manager import TaskManager
 from platform_sync import PlatformSyncClient
 from task_sync_scheduler import TaskSyncScheduler
+from task_queue import init_task_queue, shutdown_task_queue, get_task_queue
 
 # ==================== 应用生命周期管理 ====================
 
@@ -49,6 +50,21 @@ async def lifespan(app: FastAPI):
         print(f"[WARNING] 任务同步调度器启动失败: {e}")
         print("[WARNING] 平台A集成功能将不可用")
 
+    # 启动任务执行队列
+    try:
+        tm = get_task_manager()
+        template_path = TEMPLATE_DIR / "1.k"
+
+        def k_engine_factory():
+            """K文件引擎工厂函数"""
+            return KFileEngine(str(template_path))
+
+        init_task_queue(tm, k_engine_factory)
+        print("[INFO] 任务执行队列启动成功")
+    except Exception as e:
+        print(f"[WARNING] 任务执行队列启动失败: {e}")
+        print("[WARNING] 平台触发执行功能将不可用")
+
     print("[INFO] 应用启动完成")
 
     yield  # 应用运行中
@@ -57,6 +73,7 @@ async def lifespan(app: FastAPI):
     print("[INFO] 应用关闭中...")
     if task_sync_scheduler:
         task_sync_scheduler.shutdown()
+    shutdown_task_queue()
     print("[INFO] 应用已关闭")
 
 
@@ -199,6 +216,32 @@ class TaskSubmitRequest(BaseModel):
                 }
             }
         }
+
+
+class TaskSaveRequest(BaseModel):
+    """任务保存请求模型（方案2：平台触发执行模式）"""
+    task_id: str = Field(..., min_length=8, max_length=128, description="任务ID（平台A生成的UUID）")
+    params: SimulationParameters = Field(..., description="仿真参数")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "task_id": "550e8400-e29b-41d4-a716-446655440000",
+                "params": {
+                    "velocity_z": 1600.0,
+                    "bullet_yield_stress": 1000.0,
+                    "target_yield_stress": 800.0,
+                    "friction_static": 0.25,
+                    "friction_dynamic": 0.18,
+                    "simulation_endtime": 30.0
+                }
+            }
+        }
+
+
+class TaskExecuteRequest(BaseModel):
+    """任务执行请求模型"""
+    force: bool = Field(default=False, description="是否强制重新执行已完成/失败任务")
 
 
 # ==================== 动画生成数据模型 ====================
@@ -542,6 +585,274 @@ async def get_task(task_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"查询任务失败: {str(e)}")
+
+
+# ==================== 平台触发执行模式API（方案2）====================
+
+@app.post("/api/task/save")
+async def save_task(request: TaskSaveRequest):
+    """
+    保存任务参数（方案2：仅保存不执行）
+
+    用途：用户提交仿真参数，仅保存到数据库，等待平台A触发执行
+
+    Args:
+        request: 任务保存请求（包含task_id和params）
+
+    Returns:
+        保存结果
+    """
+    task_id = request.task_id
+    params = request.params
+
+    # 验证task_id格式
+    if not TaskManager.validate_task_id(task_id):
+        raise HTTPException(status_code=400, detail=f"无效的task_id格式: {task_id}")
+
+    try:
+        tm = get_task_manager()
+
+        # 检查任务是否已存在
+        existing_task = tm.get_task(task_id)
+        if existing_task:
+            # 任务已存在，检查状态
+            status = existing_task['status']
+            if status >= 1:  # 排队中/执行中/已完成/失败/中止
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "success": False,
+                        "error": "TASK_EXISTS",
+                        "message": "任务已存在且参数已锁定，无法修改",
+                        "current_status": status,
+                        "current_status_name": TaskManager.get_status_name(status)
+                    }
+                )
+            # status=0 (待执行) 可以更新参数 - 但目前不支持，返回已存在
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "success": False,
+                    "error": "TASK_EXISTS",
+                    "message": "任务已存在，参数已保存",
+                    "current_status": status,
+                    "current_status_name": TaskManager.get_status_name(status)
+                }
+            )
+
+        # 参数字典
+        param_dict = {
+            "velocity_z": params.velocity_z,
+            "bullet_yield_stress": params.bullet_yield_stress,
+            "target_yield_stress": params.target_yield_stress,
+            "friction_static": params.friction_static,
+            "friction_dynamic": params.friction_dynamic,
+            "simulation_endtime": params.simulation_endtime
+        }
+
+        # 验证参数
+        is_valid, errors = ParameterValidator.validate_parameter_set(param_dict)
+        if not is_valid:
+            critical_errors = [e for e in errors if "警告" not in e and "提示" not in e]
+            if critical_errors:
+                raise HTTPException(status_code=400, detail={
+                    "success": False,
+                    "error": "VALIDATION_ERROR",
+                    "message": "参数验证失败",
+                    "details": critical_errors
+                })
+
+        # 保存任务（状态为0-待执行）
+        task = tm.submit_task(task_id, param_dict, source='platform_a')
+
+        return {
+            "success": True,
+            "task_id": task_id,
+            "status": 0,
+            "status_name": "待执行",
+            "message": "参数已保存，等待平台触发执行",
+            "created_at": task.get('created_at')
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"保存任务失败: {str(e)}")
+
+
+@app.post("/api/task/{task_id}/execute")
+async def execute_task(task_id: str, request: TaskExecuteRequest = None):
+    """
+    触发任务执行（方案2：平台A调用）
+
+    幂等性设计：
+    - status=0（待执行）→ 加入队列，返回status=1
+    - status=1（排队中）→ 返回当前状态和队列位置
+    - status=2（执行中）→ 返回当前状态和执行时间
+    - status=3（已完成）→ 返回结果
+    - status=4（已失败）→ 返回错误信息
+    - status=5（已中止）→ 返回错误
+
+    Args:
+        task_id: 任务ID
+        request: 执行请求（可选，包含force参数）
+
+    Returns:
+        执行结果
+    """
+    # 处理可选的request body
+    force = request.force if request else False
+
+    # 验证task_id格式
+    if not TaskManager.validate_task_id(task_id):
+        raise HTTPException(status_code=400, detail=f"无效的task_id格式: {task_id}")
+
+    try:
+        tm = get_task_manager()
+        task_queue = get_task_queue()
+
+        if task_queue is None:
+            raise HTTPException(status_code=503, detail="任务队列未初始化")
+
+        # 获取任务
+        task = tm.get_task(task_id)
+        if task is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "success": False,
+                    "error": "TASK_NOT_FOUND",
+                    "message": "任务不存在，请先调用 /api/task/save 保存参数"
+                }
+            )
+
+        status = task['status']
+
+        # 状态机处理（幂等性）
+        if status == 0:  # 待执行 → 加入队列
+            result = task_queue.enqueue(task_id)
+            return {
+                "success": True,
+                "task_id": task_id,
+                "status": 1,
+                "status_name": "排队中",
+                "message": "任务已加入执行队列",
+                "queue_position": result.get("queue_position"),
+                "estimated_wait_seconds": result.get("estimated_wait_seconds")
+            }
+
+        elif status == 1:  # 排队中 → 返回队列位置
+            position = task_queue.get_task_position(task_id)
+            return {
+                "success": True,
+                "task_id": task_id,
+                "status": 1,
+                "status_name": "排队中",
+                "message": "任务已在队列中等待执行",
+                "queue_position": position if position else "即将执行"
+            }
+
+        elif status == 2:  # 执行中 → 返回执行信息
+            queue_status = task_queue.get_status()
+            running = queue_status.get("running_task", {})
+            return {
+                "success": True,
+                "task_id": task_id,
+                "status": 2,
+                "status_name": "执行中",
+                "message": "任务正在执行中",
+                "started_at": running.get("started_at") if running else task.get("start_time"),
+                "elapsed_seconds": running.get("elapsed_seconds") if running else None
+            }
+
+        elif status == 3:  # 已完成 → 返回结果
+            if force:
+                # 强制重新执行：重置状态为0，然后加入队列
+                tm.db.update_task_status(task_id, 0)
+                result = task_queue.enqueue(task_id)
+                return {
+                    "success": True,
+                    "task_id": task_id,
+                    "status": 1,
+                    "status_name": "排队中",
+                    "message": "任务已重置并加入执行队列",
+                    "queue_position": result.get("queue_position")
+                }
+
+            return {
+                "success": True,
+                "task_id": task_id,
+                "status": 3,
+                "status_name": "已完成",
+                "message": "任务已完成",
+                "output_file_path": task.get("output_file_path"),
+                "completed_at": task.get("end_time")
+            }
+
+        elif status == 4:  # 已失败 → 返回错误信息
+            if force:
+                # 强制重新执行
+                tm.db.update_task_status(task_id, 0)
+                result = task_queue.enqueue(task_id)
+                return {
+                    "success": True,
+                    "task_id": task_id,
+                    "status": 1,
+                    "status_name": "排队中",
+                    "message": "任务已重置并加入执行队列",
+                    "queue_position": result.get("queue_position")
+                }
+
+            return {
+                "success": True,
+                "task_id": task_id,
+                "status": 4,
+                "status_name": "已失败",
+                "message": "任务执行失败",
+                "error_message": task.get("error_message"),
+                "failed_at": task.get("end_time")
+            }
+
+        elif status == 5:  # 已中止 → 不允许执行
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "error": "INVALID_STATE",
+                    "message": "任务已中止，无法执行",
+                    "current_status": 5,
+                    "current_status_name": "已中止"
+                }
+            )
+
+        else:
+            raise HTTPException(status_code=500, detail=f"未知任务状态: {status}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"触发执行失败: {str(e)}")
+
+
+@app.get("/api/queue/status")
+async def get_queue_status():
+    """
+    查询任务队列状态
+
+    Returns:
+        队列状态信息
+    """
+    try:
+        task_queue = get_task_queue()
+        if task_queue is None:
+            raise HTTPException(status_code=503, detail="任务队列未初始化")
+
+        return task_queue.get_status()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"查询队列状态失败: {str(e)}")
 
 
 @app.post("/api/task/submit")

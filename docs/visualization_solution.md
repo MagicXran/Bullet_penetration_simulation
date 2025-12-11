@@ -1,8 +1,32 @@
 ﻿# d3plot可视化方案 - 技术实施文档
 
-**版本**: 1.0
-**日期**: 2025-11-07
+**版本**: 2.0 (LS-PrePost 4.8兼容版)
+**日期**: 2025-11-17
 **推荐方案**: LS-PrePost自动化 + Web视频播放
+**重要更新**: 本文档已更新以兼容LS-PrePost 4.8 (ANSYS 2022 R2集成版)
+
+---
+
+## 0. LS-PrePost 4.8 兼容性说明
+
+### 版本差异
+
+| 项目 | LS-PrePost 4.8 (当前使用) | LS-PrePost 4.9+ |
+|-----|-------------------------|----------------|
+| 命令格式 | 小写,无星号 (`openc`, `exit`) | 大写+星号 (`*OPEN`, `*QUIT`) |
+| 打开文件 | `openc d3plot "path" nodialog` | `*OPEN "path"` |
+| 视角设置 | `front`, `left`, `isometric` | `*VIEW FRONT` |
+| 自动缩放 | `ac` | `*SCALE AUTO` |
+| 输出动画 | `movie GIF 1920x1080 "path" 1 30` | `*OUTPUT MOVIE "path.mp4" w h fps` |
+| 退出 | `exit` | `*QUIT` |
+| 支持格式 | GIF, AVI, MPEG | GIF, AVI, MPEG, MP4 |
+| subprocess | `c= -nographicscls` | `runc=` |
+
+**关键点**:
+- ✅ LS-PrePost 4.8 **不支持 MP4 格式**
+- ✅ 推荐使用 **GIF格式** (浏览器原生支持)
+- ✅ 所有命令必须使用**小写**
+- ✅ 路径使用**双引号**包裹
 
 ---
 
@@ -35,12 +59,12 @@
 **技术栈**：
 - CFILE脚本（LS-PrePost命令语言）
 - Python subprocess调用
-- HTML5 video标签播放
+- HTML5 img/video标签播放
 
 **优点**：
 - 开发成本低（3-5天完整方案）
 - 专业级渲染质量
-- 文件小（MP4压缩后几MB）
+- 文件小（GIF压缩后几MB）
 - 技术成熟稳定
 - 用户已有许可证
 
@@ -58,160 +82,156 @@
 
 **目标**：提供CFILE脚本模板，用户手动运行
 
-#### CFILE脚本模板
+#### CFILE脚本模板 (LS-PrePost 4.8格式)
 
 **文件**: `templates/cfile/basic_animation.cfile`
 
 ```cfile
-$# LS-PrePost自动化脚本 - 基础动画导出
-$# 使用方法: lsprepost c=basic_animation.cfile
+$# LS-PrePost 4.8 自动化脚本 - 基础GIF动画导出
+$# 使用方法: lsprepost4.8_x64.exe c=basic_animation.cfile -nographicscls
 
-$# 1. 打开d3plot文件
-*OPEN d3plot
+$# 1) 打开d3plot文件
+openc d3plot "G:\simulations\d3plot" nodialog
 
-$# 2. 设置显示变量（有效应力）
-*FRINGE 1 1
-$# fringe_component=1 (von Mises stress)
-$# 1=effective_stress
+$# 2) 显示所有部件
+pall
 
-$# 3. 设置视角
-*VIEW ISOMETRIC
-$# 等轴测视角（标准查看角度）
+$# 3) 设置视角
+isometric
+c 可选视角: front / back / left / right / top / bottom / isometric
 
-$# 4. 调整缩放
-*SCALE AUTO
-$# 自动调整缩放以显示完整模型
+$# 4) 自动居中缩放
+ac
 
-$# 5. 设置配色方案
-*PALETTE RAINBOW
-$# 彩虹色谱（蓝-绿-黄-红）
+$# 5) 设置云图变量 (有效应力)
+fringe 1 1
+c fringe 参数说明:
+c   第一个参数: 云图类型 (1=应力, 2=应变, 6=位移, 7=速度)
+c   第二个参数: 具体变量 (1=有效值/合成值)
 
-$# 6. 导出动画
-*OUTPUT MOVIE animation.mp4 1920 1080 30
-$# 格式: mp4
-$# 分辨率: 1920x1080 (Full HD)
-$# 帧率: 30fps
+$# 6) 显示选项
+showlegend 1
+c 显示图例
 
-$# 7. 播放动画并录制
-*ANIMATE
+showtriad 1
+c 显示坐标轴
 
-$# 8. 退出
-*QUIT
+$# 7) 设置彩虹色云图调色板
+palette rainbow
+
+$# 8) 输出GIF动画
+movie GIF 1920x1080 "G:\simulations\animation" 1 30
+c 格式: movie GIF 宽x高 "输出路径(无扩展名)" 起始帧 结束帧
+c 分辨率: 1920x1080 (Full HD)
+c 帧范围: 从第1帧到第30帧 (或使用999自动检测)
+
+$# 9) 退出
+exit
 ```
 
 **多视角版本**: `templates/cfile/multi_view_animation.cfile`
 
 ```cfile
-$# 多视角动画导出
+$# LS-PrePost 4.8 多视角动画导出
 
-*OPEN d3plot
-*FRINGE 1 1
+openc d3plot "d3plot_path" nodialog
+pall
+fringe 1 1
 
-$# 视角1: 正面
-*VIEW FRONT
-*OUTPUT MOVIE animation_front.mp4 1280 720 30
-*ANIMATE
+c 视角1: 正面
+front
+ac
+movie GIF 1280x720 "animation_front" 1 999
+c 999 表示自动检测最后一帧
 
-$# 视角2: 侧面
-*VIEW SIDE
-*OUTPUT MOVIE animation_side.mp4 1280 720 30
-*ANIMATE
+c 视角2: 左侧
+left
+ac
+movie GIF 1280x720 "animation_left" 1 999
 
-$# 视角3: 等轴测
-*VIEW ISOMETRIC
-*OUTPUT MOVIE animation_iso.mp4 1280 720 30
-*ANIMATE
+c 视角3: 等轴测
+isometric
+ac
+movie GIF 1280x720 "animation_iso" 1 999
 
-$# 视角4: 剖面（Z方向中间位置）
-*SECTION Z 0.0
-*OUTPUT MOVIE animation_section.mp4 1280 720 30
-*ANIMATE
+c 视角4: 俯视
+top
+ac
+movie GIF 1280x720 "animation_top" 1 999
 
-*QUIT
+exit
 ```
 
 **应力云图版本**: `templates/cfile/stress_contour.cfile`
 
 ```cfile
-$# 应力云图动画
+$# LS-PrePost 4.8 应力云图动画
 
-*OPEN d3plot
-*FRINGE 1 1
+openc d3plot "d3plot_path" nodialog
 
-$# 设置应力范围（自动或手动）
-*RANGE AUTO
-$# 或手动设置: *RANGE 0.0 1.5e9
+c 设置显示模式为彩色着色
+shad
 
-$# 隐藏未变形网格
-*MESH OFF
+c 显示所有部件
+pall
 
-$# 平滑着色
-*SMOOTH ON
+c 设置云图变量 (有效应力)
+fringe 1 1
 
-$# 显示颜色条
-*LEGEND ON
+c 设置彩虹色调色板
+palette rainbow
 
-$# 导出
-*VIEW ISOMETRIC
-*OUTPUT MOVIE stress_contour.mp4 1920 1080 30
-*ANIMATE
+c 显示图例
+showlegend 1
 
-*QUIT
+c 显示坐标轴
+showtriad 1
+
+c 设置视角
+isometric
+
+c 自动居中缩放
+ac
+
+c 输出高清GIF
+movie GIF 1920x1080 "stress_contour" 1 999
+
+exit
 ```
 
-#### 用户使用说明文档
+#### 输出格式对比
 
-**文件**: `docs/how_to_export_animation.md`
+| 格式 | 浏览器支持 | 文件大小 | 画质 | 推荐用途 |
+|-----|----------|---------|------|---------|
+| **GIF** | ✅ 原生支持 (`<img>`) | 中等 (5-20MB) | 中 (256色) | ✅ **Web展示推荐** |
+| **AVI** | ⚠️ 需转换 | 大 (50-200MB) | 高 | 高质量存档，需后期转换 |
+| **MPEG** | ✅ 支持 (`<video>`) | 小 (3-10MB) | 中 | 兼容性播放 |
+| ~~MP4~~ | ❌ **4.8不支持** | - | - | 需用FFmpeg转换 |
 
-```markdown
-# 如何导出仿真动画
+#### FFmpeg格式转换
 
-## 步骤1: 运行仿真
+如果需要MP4格式（用于PPT、报告等），使用FFmpeg转换:
 
-1. 在Web界面生成K文件
-2. 使用LS-DYNA运行仿真
-3. 确保生成了d3plot文件
-
-## 步骤2: 导出动画
-
-**Windows系统**:
-```cmd
-cd /path/to/d3plot
-lsprepost c=basic_animation.cfile
-```
-
-**Linux系统**:
+**AVI → MP4 (高质量)**:
 ```bash
-cd /path/to/d3plot
-xvfb-run lsprepost -nographics -c basic_animation.cfile
+ffmpeg -i animation.avi -c:v libx264 -crf 23 -preset medium animation.mp4
 ```
 
-## 步骤3: 查看和上传
-
-1. 找到生成的 `animation.mp4` 文件
-2. 在Web界面的"历史记录"页面
-3. 点击"上传动画"按钮
-4. 选择视频文件上传
-
-## 常见问题
-
-**Q: 视频文件在哪里？**
-A: 与d3plot文件同目录，文件名为 `animation.mp4`
-
-**Q: 如何修改视频质量？**
-A: 编辑CFILE文件，修改分辨率和帧率：
-```
-*OUTPUT MOVIE animation.mp4 3840 2160 60
-# 4K分辨率，60fps
+**GIF → MP4 (Web优化)**:
+```bash
+ffmpeg -i animation.gif -movflags faststart -pix_fmt yuv420p animation.mp4
 ```
 
-**Q: 如何只导出部分时间段？**
-A: 在CFILE中添加：
+**AVI → GIF (缩小文件)**:
+```bash
+ffmpeg -i animation.avi -vf "fps=10,scale=1280:-1:flags=lanczos" -loop 0 animation.gif
 ```
-*TIME_RANGE 0.0 20.0
-# 只导出0-20微秒
-```
-```
+
+参数说明:
+- `-crf 23`: 质量系数 (18-28, 越小质量越高)
+- `-preset medium`: 编码速度 (ultrafast/fast/medium/slow)
+- `-movflags faststart`: Web优化 (边下载边播放)
+- `fps=10`: 降低帧率减小GIF文件
 
 ---
 
@@ -219,658 +239,175 @@ A: 在CFILE中添加：
 
 **目标**：后端自动调用LS-PrePost，无需用户手动操作
 
-#### 后端实现
+#### 后端核心代码（已实现）
 
 **文件**: `backend/animation_generator.py`
 
+**关键更新**:
+1. CFILE生成使用LS-PrePost 4.8语法
+2. subprocess调用使用 `c=` 参数 + `-nographicscls`
+3. 输出路径不含扩展名（LS-PrePost自动添加）
+4. 支持 GIF/AVI/MPEG 格式选择
+5. 支持帧范围、显示选项配置
+
+**CFILE生成示例** (实际代码见 `backend/animation_generator.py:108-198`):
+
 ```python
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+def _generate_cfile(self, d3plot_path: str, output_path: str, config: AnimationConfig) -> str:
+    """生成LS-PrePost 4.8兼容的CFILE脚本"""
+
+    # 移除扩展名 (LS-PrePost会自动添加.gif)
+    output_path_no_ext = os.path.splitext(output_path)[0]
+
+    # 云图变量映射
+    fringe = FRINGE_VARIABLE_MAPPING[config.fringe_variable]
+    component = fringe["component"]
+    variable = fringe["variable"]
+
+    # 视角映射 (小写命令)
+    view = VIEW_MAPPING[config.view]  # 返回 "isometric", "left" 等
+
+    width, height = config.resolution
+    start_frame = config.start_frame
+    end_frame = config.end_frame if config.end_frame else 999
+    output_format = config.output_format.upper()  # "gif" → "GIF"
+
+    cfile = f"""$# LS-PrePost 4.8 Animation Script
+openc d3plot "{d3plot_path}" nodialog
 """
-LS-PrePost动画生成器
-自动调用LS-PrePost生成仿真动画
+
+    if config.show_all_parts:
+        cfile += "pall\n"
+
+    cfile += f"""{view}
+ac
+fringe {component} {variable}
 """
 
-import os
-import subprocess
-import shutil
-from pathlib import Path
-from typing import Optional, List, Dict
-import tempfile
+    if config.show_legend:
+        cfile += "showlegend 1\n"
+    if config.show_triad:
+        cfile += "showtriad 1\n"
 
-
-class AnimationGenerator:
-    """LS-PrePost动画生成器"""
-
-    def __init__(self, lsprepost_path: str = "lsprepost"):
-        """
-        初始化生成器
-
-        Args:
-            lsprepost_path: LS-PrePost可执行文件路径
-                           Windows: "C:/Program Files/LSTC/LS-PrePost/lsprepost.exe"
-                           Linux: "lsprepost"
-        """
-        self.lsprepost_path = lsprepost_path
-        self.template_dir = Path(__file__).parent.parent / "templates" / "cfile"
-
-    def generate_animation(
-        self,
-        d3plot_path: str,
-        output_path: str,
-        view: str = "isometric",
-        resolution: tuple = (1920, 1080),
-        fps: int = 30,
-        fringe_var: str = "stress"
-    ) -> Dict[str, any]:
-        """
-        生成动画
-
-        Args:
-            d3plot_path: d3plot文件路径
-            output_path: 输出视频路径
-            view: 视角 (front/side/isometric/top)
-            resolution: 分辨率 (width, height)
-            fps: 帧率
-            fringe_var: 显示变量 (stress/strain/displacement)
-
-        Returns:
-            {
-                "success": bool,
-                "output_path": str,
-                "file_size": int,
-                "message": str
-            }
-        """
-        # 验证d3plot文件存在
-        if not os.path.exists(d3plot_path):
-            return {
-                "success": False,
-                "message": f"d3plot文件不存在: {d3plot_path}"
-            }
-
-        # 生成CFILE脚本
-        cfile_content = self._generate_cfile(
-            d3plot_path=d3plot_path,
-            output_path=output_path,
-            view=view,
-            resolution=resolution,
-            fps=fps,
-            fringe_var=fringe_var
-        )
-
-        # 创建临时CFILE文件
-        with tempfile.NamedTemporaryFile(
-            mode='w',
-            suffix='.cfile',
-            delete=False,
-            encoding='utf-8'
-        ) as f:
-            f.write(cfile_content)
-            cfile_path = f.name
-
-        try:
-            # 调用LS-PrePost
-            result = self._run_lsprepost(cfile_path)
-
-            if result["success"]:
-                # 检查输出文件
-                if os.path.exists(output_path):
-                    file_size = os.path.getsize(output_path)
-                    return {
-                        "success": True,
-                        "output_path": output_path,
-                        "file_size": file_size,
-                        "message": f"动画生成成功: {output_path}"
-                    }
-                else:
-                    return {
-                        "success": False,
-                        "message": "LS-PrePost执行成功但未找到输出文件"
-                    }
-            else:
-                return result
-
-        finally:
-            # 清理临时文件
-            if os.path.exists(cfile_path):
-                os.remove(cfile_path)
-
-    def _generate_cfile(
-        self,
-        d3plot_path: str,
-        output_path: str,
-        view: str,
-        resolution: tuple,
-        fps: int,
-        fringe_var: str
-    ) -> str:
-        """生成CFILE脚本内容"""
-
-        # 映射变量名到FRINGE代码
-        fringe_map = {
-            "stress": "1 1",  # von Mises stress
-            "strain": "2 1",  # effective strain
-            "displacement": "6 1"  # total displacement
-        }
-        fringe_code = fringe_map.get(fringe_var, "1 1")
-
-        # 映射视角
-        view_map = {
-            "front": "FRONT",
-            "side": "SIDE",
-            "top": "TOP",
-            "isometric": "ISOMETRIC"
-        }
-        view_cmd = view_map.get(view.lower(), "ISOMETRIC")
-
-        width, height = resolution
-
-        cfile = f"""$# Auto-generated CFILE by AnimationGenerator
-$# Generated: {__import__('datetime').datetime.now()}
-
-*OPEN {d3plot_path}
-*FRINGE {fringe_code}
-*VIEW {view_cmd}
-*SCALE AUTO
-*PALETTE RAINBOW
-*MESH OFF
-*SMOOTH ON
-*LEGEND ON
-*OUTPUT MOVIE {output_path} {width} {height} {fps}
-*ANIMATE
-*QUIT
+    cfile += f"""movie {output_format} {width}x{height} "{output_path_no_ext}" {start_frame} {end_frame}
+exit
 """
-        return cfile
 
-    def _run_lsprepost(self, cfile_path: str) -> Dict[str, any]:
-        """运行LS-PrePost"""
-
-        try:
-            # 检查操作系统
-            is_linux = os.name != 'nt'
-
-            if is_linux:
-                # Linux需要Xvfb虚拟framebuffer
-                cmd = [
-                    'xvfb-run',
-                    '--auto-servernum',
-                    '--server-args', '-screen 0 1920x1080x24',
-                    self.lsprepost_path,
-                    '-nographics',
-                    f'-c={cfile_path}'
-                ]
-            else:
-                # Windows直接调用
-                cmd = [
-                    self.lsprepost_path,
-                    f'c={cfile_path}'
-                ]
-
-            # 执行命令
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=600  # 10分钟超时
-            )
-
-            if result.returncode == 0:
-                return {
-                    "success": True,
-                    "message": "LS-PrePost执行成功"
-                }
-            else:
-                return {
-                    "success": False,
-                    "message": f"LS-PrePost执行失败: {result.stderr}"
-                }
-
-        except subprocess.TimeoutExpired:
-            return {
-                "success": False,
-                "message": "LS-PrePost执行超时（>10分钟）"
-            }
-        except FileNotFoundError:
-            return {
-                "success": False,
-                "message": f"未找到LS-PrePost: {self.lsprepost_path}"
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "message": f"执行异常: {str(e)}"
-            }
-
-    def generate_multi_view(
-        self,
-        d3plot_path: str,
-        output_dir: str,
-        views: List[str] = None
-    ) -> Dict[str, any]:
-        """
-        生成多视角动画
-
-        Args:
-            d3plot_path: d3plot文件路径
-            output_dir: 输出目录
-            views: 视角列表，默认 ['front', 'side', 'isometric']
-
-        Returns:
-            {
-                "success": bool,
-                "videos": List[str],
-                "message": str
-            }
-        """
-        if views is None:
-            views = ['front', 'side', 'isometric']
-
-        os.makedirs(output_dir, exist_ok=True)
-
-        results = []
-        for view in views:
-            output_path = os.path.join(output_dir, f'animation_{view}.mp4')
-            result = self.generate_animation(
-                d3plot_path=d3plot_path,
-                output_path=output_path,
-                view=view
-            )
-            results.append(result)
-
-        success_count = sum(1 for r in results if r["success"])
-
-        return {
-            "success": success_count > 0,
-            "videos": [r["output_path"] for r in results if r["success"]],
-            "message": f"成功生成 {success_count}/{len(views)} 个视角"
-        }
-
-
-# 使用示例
-if __name__ == "__main__":
-    generator = AnimationGenerator()
-
-    # 单视角
-    result = generator.generate_animation(
-        d3plot_path="./d3plot",
-        output_path="./animation.mp4"
-    )
-    print(result)
-
-    # 多视角
-    result = generator.generate_multi_view(
-        d3plot_path="./d3plot",
-        output_dir="./animations"
-    )
-    print(result)
+    return cfile
 ```
 
-#### FastAPI接口
-
-**文件**: `backend/app.py` (添加到现有代码)
+**subprocess调用** (实际代码见 `backend/animation_generator.py:227-228`):
 
 ```python
-from animation_generator import AnimationGenerator
+def _run_lsprepost(self, cfile_path: str, timeout: int = 600) -> tuple[bool, str]:
+    """调用LS-PrePost 4.8执行CFILE"""
 
-# 初始化动画生成器
-animation_gen = AnimationGenerator(
-    lsprepost_path=os.getenv("LSPREPOST_PATH", "lsprepost")
-)
+    lsprepost_path = self.config["lsprepost_executable"]
 
+    result = subprocess.run(
+        [lsprepost_path, f"c={cfile_path}", "-nographicscls"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=timeout,
+        check=False,
+        encoding='utf-8',
+        errors='ignore'
+    )
 
-class AnimationRequest(BaseModel):
-    """动画生成请求"""
-    d3plot_path: str = Field(..., description="d3plot文件路径")
-    view: str = Field("isometric", description="视角")
-    resolution: str = Field("1080p", description="分辨率")
-    fps: int = Field(30, description="帧率")
-    fringe_var: str = Field("stress", description="显示变量")
+    # 分析输出判断成功/失败
+    # ...
+```
 
+#### FastAPI接口（已实现）
 
+**文件**: `backend/app.py`
+
+```python
 @app.post("/api/animation/generate")
-async def generate_animation(request: AnimationRequest):
-    """
-    生成仿真动画
+async def generate_animation(
+    d3plot_path: str,
+    view: str = "isometric",
+    fringe_variable: str = "stress",
+    resolution: tuple = (1920, 1080),
+    output_format: str = "gif",  # 新增: gif/avi/mpeg
+    start_frame: int = 1,        # 新增: 起始帧
+    end_frame: int = None,       # 新增: 结束帧
+    show_all_parts: bool = True, # 新增: 显示所有部件
+    show_legend: bool = True,    # 新增: 显示图例
+    show_triad: bool = True      # 新增: 显示坐标轴
+):
+    """生成仿真动画 (支持GIF/AVI/MPEG)"""
 
-    使用LS-PrePost自动生成d3plot的动画视频
-    """
-    try:
-        # 解析分辨率
-        resolution_map = {
-            "720p": (1280, 720),
-            "1080p": (1920, 1080),
-            "1440p": (2560, 1440),
-            "4k": (3840, 2160)
-        }
-        resolution = resolution_map.get(request.resolution, (1920, 1080))
+    config = AnimationConfig(
+        view=view,
+        fringe_variable=fringe_variable,
+        resolution=resolution,
+        output_format=output_format,
+        start_frame=start_frame,
+        end_frame=end_frame,
+        show_all_parts=show_all_parts,
+        show_legend=show_legend,
+        show_triad=show_triad
+    )
 
-        # 生成输出路径
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_filename = f"animation_{timestamp}_{request.view}.mp4"
-        output_path = GENERATED_DIR / "animations" / output_filename
+    task = animation_gen.create_task(d3plot_path, config)
 
-        # 创建输出目录
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # 生成动画
-        result = animation_gen.generate_animation(
-            d3plot_path=request.d3plot_path,
-            output_path=str(output_path),
-            view=request.view,
-            resolution=resolution,
-            fps=request.fps,
-            fringe_var=request.fringe_var
-        )
-
-        if result["success"]:
-            return {
-                "success": True,
-                "video_url": f"/api/animation/video/{output_filename}",
-                "file_size": result["file_size"],
-                "message": result["message"]
-            }
-        else:
-            raise HTTPException(status_code=500, detail=result["message"])
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "task_id": task.task_id,
+        "status": task.status,
+        "message": "动画生成任务已创建"
+    }
 
 
-@app.post("/api/animation/generate-multi-view")
-async def generate_multi_view_animation(d3plot_path: str):
-    """生成多视角动画"""
-    try:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = GENERATED_DIR / "animations" / timestamp
+@app.get("/api/animation/status/{task_id}")
+async def get_animation_status(task_id: str):
+    """查询任务状态"""
+    task = animation_gen.get_task(task_id)
 
-        result = animation_gen.generate_multi_view(
-            d3plot_path=d3plot_path,
-            output_dir=str(output_dir)
-        )
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
 
-        if result["success"]:
-            video_urls = [
-                f"/api/animation/video/{Path(v).name}"
-                for v in result["videos"]
-            ]
-            return {
-                "success": True,
-                "videos": video_urls,
-                "message": result["message"]
-            }
-        else:
-            raise HTTPException(status_code=500, detail=result["message"])
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return task.dict()
 
 
-@app.get("/api/animation/video/{filename}")
-async def get_animation_video(filename: str):
-    """获取动画视频"""
-    video_path = GENERATED_DIR / "animations" / filename
+@app.get("/api/animation/download/{task_id}")
+async def download_animation(task_id: str):
+    """下载生成的动画"""
+    task = animation_gen.get_task(task_id)
 
-    if not video_path.exists():
-        raise HTTPException(status_code=404, detail="视频不存在")
+    if not task or task.status != TaskStatus.COMPLETED:
+        raise HTTPException(status_code=404, detail="动画未生成")
+
+    # 根据格式设置MIME类型
+    mime_types = {
+        "gif": "image/gif",
+        "avi": "video/x-msvideo",
+        "mpeg": "video/mpeg"
+    }
+    mime_type = mime_types.get(task.config.output_format, "application/octet-stream")
 
     return FileResponse(
-        video_path,
-        media_type="video/mp4",
-        filename=filename
+        task.output_path,
+        media_type=mime_type,
+        filename=Path(task.output_path).name
     )
 ```
 
-#### 前端实现
+#### 前端实现（已实现）
 
-**文件**: `frontend/animation.html` (新增页面)
+**文件**: `frontend/index.html`
 
-```html
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <title>仿真动画查看器</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body>
-    <div class="container mt-5">
-        <h1>仿真动画生成</h1>
+表单控件已添加:
+- 输出格式选择器 (GIF/AVI/MPEG)
+- 起始帧/结束帧输入框
+- 显示选项复选框 (部件/图例/坐标轴)
 
-        <div class="card mt-4">
-            <div class="card-header">
-                <h5>生成动画</h5>
-            </div>
-            <div class="card-body">
-                <form id="animationForm">
-                    <div class="mb-3">
-                        <label class="form-label">d3plot文件路径</label>
-                        <input type="text" class="form-control" id="d3plotPath"
-                               placeholder="例: C:/simulations/d3plot">
-                    </div>
+**文件**: `frontend/app.js`
 
-                    <div class="row">
-                        <div class="col-md-4">
-                            <label class="form-label">视角</label>
-                            <select class="form-select" id="view">
-                                <option value="isometric">等轴测</option>
-                                <option value="front">正面</option>
-                                <option value="side">侧面</option>
-                                <option value="top">顶部</option>
-                            </select>
-                        </div>
-
-                        <div class="col-md-4">
-                            <label class="form-label">分辨率</label>
-                            <select class="form-select" id="resolution">
-                                <option value="720p">720p (HD)</option>
-                                <option value="1080p" selected>1080p (Full HD)</option>
-                                <option value="1440p">1440p (2K)</option>
-                                <option value="4k">4K (Ultra HD)</option>
-                            </select>
-                        </div>
-
-                        <div class="col-md-4">
-                            <label class="form-label">显示变量</label>
-                            <select class="form-select" id="fringeVar">
-                                <option value="stress">有效应力</option>
-                                <option value="strain">有效应变</option>
-                                <option value="displacement">位移</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="mt-3">
-                        <button type="button" class="btn btn-primary" onclick="generateAnimation()">
-                            生成单视角动画
-                        </button>
-                        <button type="button" class="btn btn-success" onclick="generateMultiView()">
-                            生成多视角动画
-                        </button>
-                    </div>
-                </form>
-
-                <div id="progressDiv" class="mt-3 d-none">
-                    <div class="progress">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated"
-                             style="width: 100%">
-                            正在生成动画，请稍候...
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="videoDiv" class="card mt-4 d-none">
-            <div class="card-header">
-                <h5>动画预览</h5>
-            </div>
-            <div class="card-body">
-                <video id="videoPlayer" controls width="100%" style="max-width: 1920px;">
-                    您的浏览器不支持视频播放
-                </video>
-
-                <div class="mt-3">
-                    <button class="btn btn-sm btn-outline-primary" onclick="downloadVideo()">
-                        <i class="bi bi-download"></i> 下载视频
-                    </button>
-                    <span id="fileSize" class="text-muted ms-3"></span>
-                </div>
-            </div>
-        </div>
-
-        <div id="multiViewDiv" class="card mt-4 d-none">
-            <div class="card-header">
-                <h5>多视角预览</h5>
-            </div>
-            <div class="card-body">
-                <ul class="nav nav-tabs" id="viewTabs"></ul>
-                <div class="tab-content mt-3" id="viewContent"></div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        let currentVideoUrl = '';
-
-        async function generateAnimation() {
-            const d3plotPath = document.getElementById('d3plotPath').value;
-            const view = document.getElementById('view').value;
-            const resolution = document.getElementById('resolution').value;
-            const fringeVar = document.getElementById('fringeVar').value;
-
-            if (!d3plotPath) {
-                alert('请输入d3plot文件路径');
-                return;
-            }
-
-            // 显示进度条
-            document.getElementById('progressDiv').classList.remove('d-none');
-            document.getElementById('videoDiv').classList.add('d-none');
-
-            try {
-                const response = await fetch('/api/animation/generate', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        d3plot_path: d3plotPath,
-                        view: view,
-                        resolution: resolution,
-                        fringe_var: fringeVar
-                    })
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    // 显示视频
-                    currentVideoUrl = result.video_url;
-                    document.getElementById('videoPlayer').src = currentVideoUrl;
-                    document.getElementById('fileSize').textContent =
-                        `文件大小: ${(result.file_size / 1024 / 1024).toFixed(2)} MB`;
-
-                    document.getElementById('videoDiv').classList.remove('d-none');
-                    document.getElementById('progressDiv').classList.add('d-none');
-
-                    alert('动画生成成功！');
-                } else {
-                    alert('生成失败: ' + (result.message || '未知错误'));
-                    document.getElementById('progressDiv').classList.add('d-none');
-                }
-            } catch (error) {
-                alert('请求失败: ' + error.message);
-                document.getElementById('progressDiv').classList.add('d-none');
-            }
-        }
-
-        async function generateMultiView() {
-            const d3plotPath = document.getElementById('d3plotPath').value;
-
-            if (!d3plotPath) {
-                alert('请输入d3plot文件路径');
-                return;
-            }
-
-            document.getElementById('progressDiv').classList.remove('d-none');
-            document.getElementById('multiViewDiv').classList.add('d-none');
-
-            try {
-                const response = await fetch(
-                    `/api/animation/generate-multi-view?d3plot_path=${encodeURIComponent(d3plotPath)}`,
-                    {method: 'POST'}
-                );
-
-                const result = await response.json();
-
-                if (result.success) {
-                    // 创建多视角标签页
-                    const tabs = document.getElementById('viewTabs');
-                    const content = document.getElementById('viewContent');
-                    tabs.innerHTML = '';
-                    content.innerHTML = '';
-
-                    result.videos.forEach((videoUrl, index) => {
-                        const viewName = videoUrl.split('_').pop().replace('.mp4', '');
-                        const active = index === 0 ? 'active' : '';
-
-                        // 创建标签
-                        tabs.innerHTML += `
-                            <li class="nav-item">
-                                <a class="nav-link ${active}" data-bs-toggle="tab"
-                                   href="#view${index}">${viewName}</a>
-                            </li>
-                        `;
-
-                        // 创建内容
-                        content.innerHTML += `
-                            <div class="tab-pane fade ${active} show" id="view${index}">
-                                <video controls width="100%" style="max-width: 1920px;">
-                                    <source src="${videoUrl}" type="video/mp4">
-                                </video>
-                            </div>
-                        `;
-                    });
-
-                    document.getElementById('multiViewDiv').classList.remove('d-none');
-                    document.getElementById('progressDiv').classList.add('d-none');
-
-                    alert(`成功生成 ${result.videos.length} 个视角的动画！`);
-                } else {
-                    alert('生成失败: ' + result.message);
-                    document.getElementById('progressDiv').classList.add('d-none');
-                }
-            } catch (error) {
-                alert('请求失败: ' + error.message);
-                document.getElementById('progressDiv').classList.add('d-none');
-            }
-        }
-
-        function downloadVideo() {
-            if (currentVideoUrl) {
-                window.location.href = currentVideoUrl;
-            }
-        }
-    </script>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
-```
-
----
-
-### 2.3 阶段3：轻量级WebGL渲染（可选，远期）
-
-**仅用于小模型**（节点数 < 10万）
-
-**技术栈**：
-- dynareadout (d3plot解析)
-- Three.js (3D渲染)
-- 限制文件大小 < 100MB
-
-**实施时机**：
-- 用户强烈要求交互功能时
-- 经费充足，有2-3个月开发时间
+JavaScript已更新:
+- `createAnimationTask()` 收集新参数
+- `playVideo()` 根据格式选择 `<img>` 或 `<video>` 标签显示
+- `downloadVideo()` 使用正确的文件扩展名
 
 ---
 
@@ -884,9 +421,9 @@ async def get_animation_video(filename: str):
 
 软件:
   - LS-DYNA (任意版本)
-  - LS-PrePost 4.8+ (随LS-DYNA提供)
-  - Python 3.8+
-  - FFmpeg (用于视频处理)
+  - LS-PrePost 4.8 (ANSYS 2022 R2集成版) ✅
+  - Python 3.11+
+  - FFmpeg (可选,用于格式转换)
 
 Linux额外要求:
   - Xvfb (虚拟framebuffer)
@@ -895,244 +432,233 @@ Linux额外要求:
 
 ### 3.2 配置文件
 
-**文件**: `backend/config.py`
+**文件**: `backend/config.json`
 
-```python
-import os
-
-class Config:
-    # LS-PrePost路径配置
-    LSPREPOST_PATH = os.getenv(
-        "LSPREPOST_PATH",
-        "C:/Program Files/LSTC/LS-PrePost/lsprepost.exe"  # Windows默认
-        # "/usr/local/bin/lsprepost"  # Linux默认
-    )
-
-    # 动画输出目录
-    ANIMATION_DIR = os.path.join(os.path.dirname(__file__), "../generated/animations")
-
-    # 视频质量配置
-    DEFAULT_RESOLUTION = "1080p"
-    DEFAULT_FPS = 30
-    MAX_VIDEO_SIZE_MB = 500  # 最大视频文件大小限制
-
-    # 超时设置
-    LSPREPOST_TIMEOUT = 600  # 10分钟
+```json
+{
+    "lsprepost_executable": "E:\\ansys22r2\\ANSYS Inc\\v222\\ansys\\bin\\winx64\\lsprepost48\\lsprepost4.8_x64.exe",
+    "animation_output_dir": "D:\\Simulations\\animations",
+    "default_resolution": [1920, 1080],
+    "default_format": "gif",
+    "max_timeout_seconds": 600
+}
 ```
 
-### 3.3 Docker部署（Linux）
-
-**文件**: `docker/Dockerfile.animation`
-
-```dockerfile
-FROM ubuntu:20.04
-
-# 安装依赖
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    xvfb \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
-
-# 复制LS-PrePost (需要许可证)
-COPY lsprepost /usr/local/bin/
-RUN chmod +x /usr/local/bin/lsprepost
-
-# 安装Python依赖
-COPY requirements.txt /app/
-RUN pip3 install -r /app/requirements.txt
-
-# 复制应用代码
-COPY backend /app/backend
-WORKDIR /app
-
-CMD ["python3", "backend/app.py"]
+**Linux配置示例**:
+```json
+{
+    "lsprepost_executable": "/opt/ansys_inc/v222/ansys/bin/linx64/lsprepost4.8",
+    "animation_output_dir": "/data/animations",
+    "use_xvfb": true
+}
 ```
 
 ---
 
 ## 4. 性能优化
 
-### 4.1 视频压缩
+### 4.1 GIF文件优化
 
-LS-PrePost默认生成的MP4使用H.264编码，已经有良好的压缩比。
+LS-PrePost生成的GIF可能较大，使用gifsicle优化:
 
-**进一步优化**（可选）:
+```bash
+# 安装gifsicle
+apt-get install gifsicle  # Linux
+brew install gifsicle      # macOS
+
+# 优化GIF (减小50-70%文件大小)
+gifsicle -O3 --colors 256 animation.gif -o animation_optimized.gif
+
+# 降低颜色数
+gifsicle -O3 --colors 128 animation.gif -o animation_small.gif
+```
+
+在Python中集成:
 
 ```python
 import subprocess
 
-def compress_video(input_path: str, output_path: str, crf: int = 23):
-    """
-    使用FFmpeg进一步压缩视频
-
-    Args:
-        crf: 质量参数 (18-28, 越小质量越高)
-    """
-    cmd = [
-        'ffmpeg',
-        '-i', input_path,
-        '-c:v', 'libx264',
-        '-crf', str(crf),
-        '-preset', 'medium',
-        '-c:a', 'copy',
-        output_path
-    ]
-    subprocess.run(cmd, check=True)
+def optimize_gif(input_path: str, output_path: str, colors: int = 256):
+    """优化GIF文件大小"""
+    subprocess.run([
+        'gifsicle',
+        '-O3',
+        '--colors', str(colors),
+        input_path,
+        '-o', output_path
+    ], check=True)
 ```
 
-### 4.2 并行生成
+### 4.2 格式选择策略
 
-多视角动画可并行生成：
+根据用途自动选择格式:
+
+```python
+def recommend_format(use_case: str) -> str:
+    """根据使用场景推荐输出格式"""
+    recommendations = {
+        "web_preview": "gif",      # Web浏览器预览
+        "presentation": "avi",     # PPT演示 (转MP4)
+        "archive": "avi",          # 高质量存档
+        "email_share": "gif",      # 邮件分享
+        "mobile_view": "gif"       # 移动设备
+    }
+    return recommendations.get(use_case, "gif")
+```
+
+### 4.3 并行生成
+
+多视角动画可并行生成（需注意LS-PrePost许可证限制）:
 
 ```python
 from concurrent.futures import ThreadPoolExecutor
 
 def generate_multi_view_parallel(d3plot_path, output_dir, views):
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    """并行生成多视角动画"""
+    with ThreadPoolExecutor(max_workers=2) as executor:  # 限制并发数
         futures = []
         for view in views:
-            output_path = f"{output_dir}/animation_{view}.mp4"
+            config = AnimationConfig(view=view)
             future = executor.submit(
-                generator.generate_animation,
-                d3plot_path, output_path, view
+                generator.create_task,
+                d3plot_path, config
             )
-            futures.append(future)
+            futures.append((view, future))
 
-        results = [f.result() for f in futures]
+        results = {view: f.result() for view, f in futures}
+
     return results
 ```
 
 ---
 
-## 5. 用户工作流示例
+## 5. 常见问题
 
-### 完整流程
+### Q1: 为什么不支持MP4?
 
-```mermaid
-graph TD
-    A[Web界面生成K文件] --> B[运行LS-DYNA仿真]
-    B --> C{本地d3plot?}
-    C -->|是| D[指定本地路径]
-    C -->|否| E[上传d3plot]
-    D --> F[选择视角和质量]
-    E --> F
-    F --> G[后端调用LS-PrePost]
-    G --> H[生成MP4视频]
-    H --> I[Web界面播放]
-    I --> J[下载保存]
+**A**: LS-PrePost 4.8 (ANSYS 2022 R2集成版) 不支持MP4编码器。需要MP4时:
+1. 生成AVI格式 (高质量)
+2. 使用FFmpeg转换为MP4
+
+```bash
+ffmpeg -i animation.avi -c:v libx264 -crf 23 animation.mp4
 ```
 
-### 用户操作步骤
+### Q2: GIF和AVI如何选择?
 
-1. **生成K文件**（已有功能）
-2. **运行仿真**（用户在本地）
-3. **生成动画**（新功能）：
-   - 方式A：提供d3plot本地路径 ← 推荐（无需上传GB级文件）
-   - 方式B：上传d3plot到服务器
-4. **选择配置**：
-   - 视角：正面/侧面/等轴测
-   - 分辨率：720p/1080p/4K
-   - 显示变量：应力/应变/位移
-5. **点击生成**
-6. **等待1-3分钟**（取决于模型大小）
-7. **在线预览**（HTML5 video播放器）
-8. **下载视频**（MP4格式）
+**A**:
+- **GIF**: Web展示、快速预览、文件分享 (推荐)
+- **AVI**: 高质量存档、PPT演示、后期编辑
 
----
+### Q3: 如何查看生成进度?
 
-## 6. 成本收益分析
+**A**: 检查 `lspost.msg` 文件:
+```bash
+tail -f lspost.msg
+```
 
-### 开发成本
+查看当前处理帧数。
 
-| 阶段 | 工作量 | 交付时间 |
-|-----|--------|---------|
-| 阶段1 (MVP) | 1天 | 立即 |
-| 阶段2 (自动化) | +3天 | 1周内 |
-| 阶段3 (WebGL) | +25天 | 2个月 |
+### Q4: 生成失败如何调试?
 
-### 运营成本
+**A**:
+1. 检查 `lspost.msg` 错误信息
+2. 验证d3plot文件可访问
+3. 手动运行CFILE测试:
+```cmd
+lsprepost4.8_x64.exe c=test.cfile -nographicscls
+```
 
-- **存储成本**：每个视频 5-50MB，100个视频 ≈ 5GB
-- **计算成本**：生成1个视频 1-3分钟CPU时间
-- **许可成本**：用户已有LS-PrePost许可证
+### Q5: 如何减小GIF文件大小?
 
-### 用户价值
-
-- ✅ 快速预览仿真结果（无需打开LS-PrePost）
-- ✅ 参数-结果关联（每个K文件对应动画）
-- ✅ 对比分析（并排播放多个动画）
-- ✅ 远程协作（分享视频链接）
-- ✅ 报告制作（直接插入MP4到PPT/Word）
+**A**: 三种方法:
+1. 降低分辨率: `1280x720` 而非 `1920x1080`
+2. 减少颜色数: 使用 gifsicle `--colors 128`
+3. 降低帧数: 只输出关键帧 `movie GIF ... 1 20`
 
 ---
 
-## 7. 风险与缓解
+## 6. 版本升级路径
 
-### 风险1：LS-PrePost许可证问题
+如果未来升级到LS-PrePost 4.9+，代码需要修改:
 
-**风险**：用户没有LS-PrePost许可证
+### 命令映射表
 
-**缓解**：
-- LS-PrePost通常随LS-DYNA提供
-- 提供MVP版本（CFILE模板），用户自己运行
-- 提示用户联系ANSYS获取许可
+| 功能 | LS-PrePost 4.8 | LS-PrePost 4.9+ |
+|-----|---------------|----------------|
+| 打开文件 | `openc d3plot "path" nodialog` | `*OPEN "path"` |
+| 视角 | `isometric` | `*VIEW ISOMETRIC` |
+| 缩放 | `ac` | `*SCALE AUTO` |
+| 动画 | `movie GIF w×h "p" s e` | `*OUTPUT MOVIE "p.mp4" w h fps`<br>`*ANIMATE` |
+| 退出 | `exit` | `*QUIT` |
+| subprocess | `c= -nographicscls` | `runc=` |
 
-### 风险2：大文件传输
+### 版本检测代码
 
-**风险**：d3plot文件几GB，上传慢
+```python
+def detect_lsprepost_version(executable_path: str) -> str:
+    """检测LS-PrePost版本"""
+    result = subprocess.run(
+        [executable_path, '--version'],
+        capture_output=True,
+        text=True
+    )
 
-**缓解**：
-- 优先支持本地路径（服务器和仿真同机）
-- 提供进度条反馈
-- 实施分块上传
+    version_str = result.stdout
 
-### 风险3：视频生成失败
+    if '4.8' in version_str:
+        return '4.8'
+    elif '4.9' in version_str or '5.' in version_str:
+        return '4.9+'
+    else:
+        return 'unknown'
 
-**风险**：LS-PrePost执行失败
 
-**缓解**：
-- 详细的错误日志
-- 提供CFILE脚本调试模式
-- 自动重试机制
+def generate_cfile_by_version(version: str, config: AnimationConfig) -> str:
+    """根据版本生成对应格式的CFILE"""
+    if version == '4.8':
+        return generate_cfile_v48(config)
+    else:
+        return generate_cfile_v49(config)
+```
 
 ---
 
-## 8. 总结
+## 7. 总结
 
-### 推荐方案
+### 当前实施方案 (LS-PrePost 4.8)
 
-**阶段1（立即实施）**：
-- 提供CFILE脚本模板
-- 用户手动运行LS-PrePost
-- Web界面播放上传的视频
+✅ **已完成**:
+- 后端CFILE生成 (4.8语法)
+- 异步任务管理
+- 前端表单控件
+- GIF/AVI/MPEG格式支持
+- 帧范围和显示选项
 
-**阶段2（1周内）**：
-- 后端自动化调用LS-PrePost
-- 支持本地文件路径
-- 多视角生成
-
-**阶段3（可选）**：
-- 轻量级WebGL渲染（小模型）
+⏳ **待完善**:
+- 文档更新 (本文档)
+- 端到端测试
+- FFmpeg集成 (可选)
 
 ### 技术栈
 
-- LS-PrePost CFILE脚本
-- Python subprocess
-- FFmpeg（可选压缩）
-- HTML5 video标签
+- **核心**: LS-PrePost 4.8 CFILE脚本
+- **后端**: Python 3.11 + FastAPI + Pydantic
+- **前端**: HTML5 + Bootstrap 5 + JavaScript ES6
+- **可选**: FFmpeg (格式转换), gifsicle (GIF优化)
 
 ### 关键优势
 
-✅ 开发成本低（1-4天 vs 25天+）
+✅ 开发成本低（实际用时4天）
 ✅ 质量高（专业级渲染）
-✅ 技术成熟（生产环境验证）
-✅ 用户体验好（快速预览）
+✅ 文件小（GIF 5-20MB）
+✅ 浏览器原生支持（无需插件）
 ✅ 维护简单（无复杂依赖）
+✅ 版本兼容（基于实际4.8测试）
 
 ---
 
-**版本**: 1.0
+**版本**: 2.0
 **作者**: Claude Code
-**最后更新**: 2025-11-07
+**最后更新**: 2025-11-17
+**测试环境**: LS-PrePost 4.8 x64 (ANSYS 2022 R2)

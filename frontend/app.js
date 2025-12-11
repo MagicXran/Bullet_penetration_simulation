@@ -346,7 +346,13 @@ async function createAnimationTask() {
         const view = document.getElementById('animation_view').value;
         const fringeVariable = document.getElementById('animation_fringe').value;
         const resolutionStr = document.getElementById('animation_resolution').value;
-        const fps = parseInt(document.getElementById('animation_fps').value);
+        const outputFormat = document.getElementById('animation_format').value;
+        const startFrame = parseInt(document.getElementById('animation_start_frame').value) || 1;
+        const endFrameValue = document.getElementById('animation_end_frame').value;
+        const endFrame = endFrameValue ? parseInt(endFrameValue) : null;
+        const showAllParts = document.getElementById('show_all_parts').checked;
+        const showLegend = document.getElementById('show_legend').checked;
+        const showTriad = document.getElementById('show_triad').checked;
 
         const resolution = resolutionStr.split(',').map(v => parseInt(v));
 
@@ -355,8 +361,12 @@ async function createAnimationTask() {
             view: view,
             fringe_variable: fringeVariable,
             resolution: resolution,
-            fps: fps,
-            output_format: 'mp4'
+            output_format: outputFormat,
+            start_frame: startFrame,
+            end_frame: endFrame,
+            show_all_parts: showAllParts,
+            show_legend: showLegend,
+            show_triad: showTriad
         };
 
         const response = await fetch(`${API_BASE}/animation/generate`, {
@@ -473,7 +483,8 @@ function renderAnimationTasks(tasks) {
                             <p class="card-text small text-muted mb-1">
                                 <strong>视角:</strong> ${task.config.view} |
                                 <strong>变量:</strong> ${task.config.fringe_variable} |
-                                <strong>分辨率:</strong> ${task.config.resolution[0]}x${task.config.resolution[1]}
+                                <strong>分辨率:</strong> ${task.config.resolution[0]}x${task.config.resolution[1]} |
+                                <strong>格式:</strong> ${task.config.output_format.toUpperCase()}
                             </p>
                             <p class="card-text small text-muted mb-0">
                                 <i class="bi bi-clock"></i> 创建于 ${task.created_at}
@@ -582,24 +593,47 @@ async function playVideo(taskId) {
             return;
         }
 
-        // 设置视频源
+        // 获取输出格式
+        const format = task.config.output_format || 'gif';
         const videoUrl = `${API_BASE}/animation/download/${taskId}`;
-        const videoPlayer = document.getElementById('videoPlayer');
-        const videoSource = videoPlayer.querySelector('source');
-        videoSource.src = videoUrl;
-        videoPlayer.load();
+
+        // 根据格式选择显示方式
+        const modalBody = document.querySelector('#videoModal .modal-body');
+
+        if (format === 'gif') {
+            // GIF使用img标签
+            modalBody.innerHTML = `
+                <img id="gifPlayer" src="${videoUrl}"
+                     style="width: 100%; max-height: 70vh; object-fit: contain;"
+                     alt="动画预览">
+            `;
+        } else {
+            // AVI/MPEG使用video标签
+            const mimeType = format === 'avi' ? 'video/x-msvideo' : 'video/mpeg';
+            modalBody.innerHTML = `
+                <video id="videoPlayer" controls style="width: 100%; max-height: 70vh;">
+                    <source src="${videoUrl}" type="${mimeType}">
+                    您的浏览器不支持该视频格式
+                </video>
+            `;
+        }
 
         // 设置下载链接
         const downloadBtn = document.getElementById('downloadVideoBtn');
         downloadBtn.href = videoUrl;
-        downloadBtn.download = `animation_${taskId.substring(0, 8)}.mp4`;
+        downloadBtn.download = `animation_${taskId.substring(0, 8)}.${format}`;
 
         // 显示模态框
         const videoModal = new bootstrap.Modal(document.getElementById('videoModal'));
         videoModal.show();
 
-        // 自动播放
-        videoPlayer.play();
+        // 如果是视频格式，自动播放
+        if (format !== 'gif') {
+            setTimeout(() => {
+                const player = document.getElementById('videoPlayer');
+                if (player) player.play();
+            }, 300);
+        }
 
     } catch (error) {
         showToast('错误', error.message, 'danger');
@@ -607,14 +641,28 @@ async function playVideo(taskId) {
 }
 
 // 下载视频
-function downloadVideo(taskId) {
-    const url = `${API_BASE}/animation/download/${taskId}`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `animation_${taskId.substring(0, 8)}.mp4`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    showToast('提示', '视频下载已开始', 'info');
+async function downloadVideo(taskId) {
+    try {
+        // 先获取任务信息以确定文件格式
+        const response = await fetch(`${API_BASE}/animation/status/${taskId}`);
+        if (!response.ok) {
+            throw new Error('获取任务信息失败');
+        }
+
+        const task = await response.json();
+        const format = task.config.output_format || 'gif';
+
+        const url = `${API_BASE}/animation/download/${taskId}`;
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `animation_${taskId.substring(0, 8)}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showToast('提示', '动画下载已开始', 'info');
+
+    } catch (error) {
+        showToast('错误', error.message, 'danger');
+    }
 }
 

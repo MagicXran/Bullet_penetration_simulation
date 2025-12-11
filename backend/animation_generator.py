@@ -111,14 +111,14 @@ class AnimationGenerator:
         output_path: str,
         config: AnimationConfig
     ) -> str:
-        """动态生成CFILE脚本
+        """动态生成CFILE脚本（LS-PrePost 4.8兼容）
 
         设计决策：使用f-string而非模板引擎
         原因：CFILE结构简单（8-10行命令），不需要额外依赖
 
         Args:
             d3plot_path: d3plot文件路径
-            output_path: 输出MP4路径
+            output_path: 输出GIF路径（含扩展名如.gif）
             config: 动画配置
 
         Returns:
@@ -129,30 +129,71 @@ class AnimationGenerator:
         component = fringe["component"]
         variable = fringe["variable"]
 
-        # 获取视角映射
+        # 获取视角映射（LS-PrePost 4.8使用小写命令）
         view = VIEW_MAPPING[config.view]
 
         # 分辨率
         width, height = config.resolution
-        fps = config.fps
 
-        # 生成CFILE脚本（Windows路径需要反斜杠转义）
-        d3plot_path_escaped = d3plot_path.replace("\\", "\\\\")
-        output_path_escaped = output_path.replace("\\", "\\\\")
+        # 帧范围
+        start_frame = config.start_frame
+        end_frame = config.end_frame if config.end_frame else 999  # 默认999，LS-PrePost会自动截断
 
-        cfile_content = f"""$# LS-PrePost自动化脚本 - 动画生成
+        # 输出格式（转大写：gif → GIF）
+        output_format = config.output_format.upper()
+
+        # 移除输出路径的扩展名（LS-PrePost会自动添加）
+        output_path_no_ext = os.path.splitext(output_path)[0]
+
+        # Windows路径：单反斜杠即可（LS-PrePost 4.8格式）
+        d3plot_path_escaped = d3plot_path
+        output_path_escaped = output_path_no_ext
+
+        # 生成CFILE脚本（基于用户提供的实际可工作格式）
+        cfile_content = f"""$# LS-PrePost 4.8 GIF Animation Script
 $# 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 $# d3plot: {d3plot_path}
 
-*OPEN "{d3plot_path_escaped}"
-*FRINGE {component} {variable}
-*VIEW {view}
-*SCALE AUTO
-*PALETTE RAINBOW
-*OUTPUT MOVIE "{output_path_escaped}" {width} {height} {fps}
-*ANIMATE
-*QUIT
+$# 1) 打开 d3plot 文件
+openc d3plot "{d3plot_path_escaped}" nodialog
+
 """
+        # 2) 显示所有部件（可选）
+        if config.show_all_parts:
+            cfile_content += "c 2) 显示所有部件\npall\n\n"
+
+        # 3) 设置视角
+        cfile_content += f"""c 3) 设置视角
+{view}
+
+"""
+
+        # 4) 自动居中缩放
+        cfile_content += "c 4) 自动居中缩放\nac\n\n"
+
+        # 5) 设置 fringe 变量
+        cfile_content += f"""c 5) 设置云图变量
+fringe {component} {variable}
+
+"""
+
+        # 6) 显示选项
+        if config.show_legend or config.show_triad:
+            cfile_content += "c 6) 显示选项\n"
+            if config.show_legend:
+                cfile_content += "showlegend 1\n"
+            if config.show_triad:
+                cfile_content += "showtriad 1\n"
+            cfile_content += "\n"
+
+        # 7) 输出动画
+        cfile_content += f"""c 7) 输出动画
+movie {output_format} {width}x{height} "{output_path_escaped}" {start_frame} {end_frame}
+
+"""
+
+        # 8) 退出
+        cfile_content += "c 8) 退出\nexit\n"
 
         return cfile_content
 
@@ -180,11 +221,11 @@ $# d3plot: {d3plot_path}
         lsprepost_path = self.config["lsprepost_executable"]
 
         try:
-            # 调用LS-PrePost批处理模式
-            # 命令格式: lsprepost.exe runc=script.cfile (批处理执行)
-            # 注意: c= 是GUI加载模式, runc= 是批处理执行模式
+            # 调用LS-PrePost批处理模式（LS-PrePost 4.8兼容）
+            # 命令格式: lsprepost.exe c=script.cfile -nographicscls
+            # 注意: LS-PrePost 4.8使用 c= 参数（不是 runc=）
             result = subprocess.run(
-                [lsprepost_path, f"runc={cfile_path}"],
+                [lsprepost_path, f"c={cfile_path}", "-nographicscls"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 timeout=timeout,

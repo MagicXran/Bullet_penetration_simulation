@@ -128,6 +128,23 @@ class TaskManager:
 
         return self.db.get_task(task_id)
 
+    def queue_task(self, task_id: str) -> bool:
+        """
+        将任务加入执行队列（状态变为排队中）
+
+        Args:
+            task_id: 任务ID
+
+        Returns:
+            是否更新成功
+        """
+        queued_at = datetime.now().isoformat()
+        return self.db.update_task_status(
+            task_id,
+            self.STATUS_QUEUED,
+            queued_at=queued_at
+        )
+
     def start_task(self, task_id: str) -> bool:
         """
         开始执行任务

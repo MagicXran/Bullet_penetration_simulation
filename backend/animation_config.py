@@ -74,23 +74,38 @@ class AnimationConfig(BaseModel):
         description="视频分辨率（宽x高）"
     )
 
-    fps: int = Field(
-        default=30,
-        ge=15,
-        le=60,
-        description="帧率（15-60 fps）"
+    # 帧范围（替代fps参数）
+    start_frame: int = Field(
+        default=1,
+        ge=1,
+        description="起始帧号（通常从1开始）"
     )
 
-    # 时间范围（可选，None表示全部时间步）
-    time_range: Optional[Tuple[float, float]] = Field(
+    end_frame: Optional[int] = Field(
         default=None,
-        description="时间范围 [start_time, end_time] (µs)，None表示全部"
+        description="结束帧号（None表示自动检测总帧数）"
     )
 
-    # 输出格式
-    output_format: Literal["mp4", "avi"] = Field(
-        default="mp4",
-        description="输出视频格式"
+    # 显示选项
+    show_all_parts: bool = Field(
+        default=True,
+        description="显示所有部件（pall命令）"
+    )
+
+    show_legend: bool = Field(
+        default=True,
+        description="显示图例（showlegend命令）"
+    )
+
+    show_triad: bool = Field(
+        default=True,
+        description="显示坐标轴（showtriad命令）"
+    )
+
+    # 输出格式（LS-PrePost 4.8支持：GIF, AVI, MPEG）
+    output_format: Literal["gif", "avi", "mpeg"] = Field(
+        default="gif",
+        description="输出动画格式（LS-PrePost 4.8不支持MP4）"
     )
 
     @validator("resolution")
@@ -103,15 +118,13 @@ class AnimationConfig(BaseModel):
             raise ValueError("分辨率太大，最大3840x2160 (4K)")
         return v
 
-    @validator("time_range")
-    def validate_time_range(cls, v):
-        """验证时间范围合理性"""
+    @validator("end_frame")
+    def validate_end_frame(cls, v, values):
+        """验证结束帧合理性"""
         if v is not None:
-            start, end = v
-            if start < 0:
-                raise ValueError("起始时间不能为负")
-            if end <= start:
-                raise ValueError("结束时间必须大于起始时间")
+            start_frame = values.get("start_frame", 1)
+            if v <= start_frame:
+                raise ValueError(f"结束帧({v})必须大于起始帧({start_frame})")
         return v
 
 
@@ -221,13 +234,13 @@ FRINGE_VARIABLE_MAPPING = {
 }
 
 
-# 视角到LS-PrePost命令的映射
+# 视角到LS-PrePost命令的映射（LS-PrePost 4.8使用小写命令）
 VIEW_MAPPING = {
-    ViewType.ISOMETRIC: "ISOMETRIC",
-    ViewType.FRONT: "FRONT",
-    ViewType.BACK: "BACK",
-    ViewType.TOP: "TOP",
-    ViewType.BOTTOM: "BOTTOM",
-    ViewType.LEFT: "LEFT",
-    ViewType.RIGHT: "RIGHT",
+    ViewType.ISOMETRIC: "isometric",
+    ViewType.FRONT: "front",
+    ViewType.BACK: "back",
+    ViewType.TOP: "top",
+    ViewType.BOTTOM: "bottom",
+    ViewType.LEFT: "left",
+    ViewType.RIGHT: "right",
 }

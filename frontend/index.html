@@ -281,7 +281,8 @@
                     </h3>
 
                     <p class="text-muted">
-                        将LS-DYNA仿真结果（d3plot文件）自动渲染为MP4动画，支持自定义视角和云图变量。
+                        将LS-DYNA仿真结果（d3plot文件）自动渲染为GIF动画，支持自定义视角、云图变量和显示选项。
+                        <span class="badge bg-warning text-dark ms-2">LS-PrePost 4.8 不支持MP4格式</span>
                     </p>
 
                     <!-- 动画生成表单 -->
@@ -351,16 +352,89 @@
                                         </select>
                                     </div>
 
-                                    <!-- 帧率 -->
+                                    <!-- 输出格式 -->
                                     <div class="col-md-6 mb-3">
-                                        <label for="animation_fps" class="form-label">
-                                            <strong>帧率 (FPS)</strong>
+                                        <label for="animation_format" class="form-label">
+                                            <strong>输出格式</strong>
                                         </label>
-                                        <select class="form-select" id="animation_fps">
-                                            <option value="24">24 fps</option>
-                                            <option value="30" selected>30 fps</option>
-                                            <option value="60">60 fps</option>
+                                        <select class="form-select" id="animation_format">
+                                            <option value="gif" selected>GIF（网页播放，推荐）</option>
+                                            <option value="avi">AVI（高质量，需后期转换）</option>
+                                            <option value="mpeg">MPEG（标准格式）</option>
                                         </select>
+                                        <div class="form-text">
+                                            LS-PrePost 4.8 不支持 MP4 格式
+                                        </div>
+                                    </div>
+
+                                    <!-- 帧范围 - 起始帧 -->
+                                    <div class="col-md-3 mb-3">
+                                        <label for="animation_start_frame" class="form-label">
+                                            <strong>起始帧</strong>
+                                        </label>
+                                        <input type="number"
+                                               class="form-control"
+                                               id="animation_start_frame"
+                                               value="1"
+                                               min="1"
+                                               required>
+                                    </div>
+
+                                    <!-- 帧范围 - 结束帧 -->
+                                    <div class="col-md-3 mb-3">
+                                        <label for="animation_end_frame" class="form-label">
+                                            <strong>结束帧</strong>
+                                        </label>
+                                        <input type="number"
+                                               class="form-control"
+                                               id="animation_end_frame"
+                                               placeholder="自动检测"
+                                               min="2">
+                                        <div class="form-text">
+                                            留空自动检测
+                                        </div>
+                                    </div>
+
+                                    <!-- 显示选项 -->
+                                    <div class="col-md-12 mb-3">
+                                        <label class="form-label">
+                                            <strong>显示选项</strong>
+                                        </label>
+                                        <div class="row">
+                                            <div class="col-md-4">
+                                                <div class="form-check">
+                                                    <input class="form-check-input"
+                                                           type="checkbox"
+                                                           id="show_all_parts"
+                                                           checked>
+                                                    <label class="form-check-label" for="show_all_parts">
+                                                        显示所有部件
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="form-check">
+                                                    <input class="form-check-input"
+                                                           type="checkbox"
+                                                           id="show_legend"
+                                                           checked>
+                                                    <label class="form-check-label" for="show_legend">
+                                                        显示图例
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="form-check">
+                                                    <input class="form-check-input"
+                                                           type="checkbox"
+                                                           id="show_triad"
+                                                           checked>
+                                                    <label class="form-check-label" for="show_triad">
+                                                        显示坐标轴
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 

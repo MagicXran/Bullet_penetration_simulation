@@ -70,7 +70,7 @@
                 <strong>任务ID:</strong> <span id="taskIdDisplay">加载中...</span>
             </p>
             <p class="mb-0 small opacity-75">
-                请填写仿真参数后点击"提交计算"
+                请填写仿真参数后点击"保存参数"，等待平台触发执行
             </p>
         </div>
 
@@ -162,7 +162,7 @@
                             </label>
                             <div class="input-group">
                                 <input type="number" class="form-control" id="friction_dynamic"
-                                       value="0.18" min="0" max="0.6" step="0.05" required>
+                                       value="0.2" min="0" max="0.6" step="0.05" required>
                                 <span class="input-group-text">-</span>
                             </div>
                             <div class="form-text">范围: 0.0-0.6</div>
@@ -192,9 +192,13 @@
             <!-- 提交按钮 -->
             <div class="d-grid gap-2 mt-4">
                 <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
-                    <i class="bi bi-play-circle-fill"></i>
-                    提交计算
+                    <i class="bi bi-save-fill"></i>
+                    保存参数
                 </button>
+                <a href="#" class="btn btn-outline-secondary" id="viewResultBtn" style="display: none;">
+                    <i class="bi bi-eye-fill"></i>
+                    查看结果
+                </a>
             </div>
         </form>
     </div>
@@ -269,7 +273,7 @@
                 const response = await fetch(`${API_BASE}/task/${taskId}`);
 
                 if (response.status === 404) {
-                    // 任务不存在，显示空表单
+                    // 任务不存在 → 新建模式：显示空表单
                     showAlert('这是一个新任务，请填写参数后提交。', 'info');
                     return;
                 }
@@ -280,17 +284,35 @@
 
                 const task = await response.json();
 
-                // 填充表单
+                // 根据任务状态决定行为（状态机分流）
+                const status = task.status;
+
+                // 状态2（运行中）或状态3（已完成）→ 直接跳转到结果页查看
+                if (status === 2 || status === 3) {
+                    const statusName = status === 2 ? '运行中' : '已完成';
+                    showAlert(`任务${statusName}，正在跳转到结果页面...`, 'info');
+                    setTimeout(() => {
+                        window.location.href = `output.html?task_id=${taskId}`;
+                    }, 500);
+                    return;
+                }
+
+                // 状态4（失败）或状态5（中止）→ 显示历史参数，允许重新提交
+                if (status === 4 || status === 5) {
+                    if (task.input_params) {
+                        setFormData(task.input_params);
+                    }
+                    const statusName = status === 4 ? '执行失败' : '已中止';
+                    const errorInfo = task.error_message ? `（${task.error_message}）` : '';
+                    showAlert(`上次任务${statusName}${errorInfo}，您可以修改参数后重新提交。`, 'warning');
+                    return;
+                }
+
+                // 状态0（待提交）或状态1（排队中）→ 显示参数，可以继续提交
                 if (task.input_params) {
                     setFormData(task.input_params);
                 }
-
-                // 根据任务状态显示提示
-                if (task.status >= 1) {
-                    showAlert(`任务已存在，当前状态：${task.status_name}。您可以修改参数后重新提交。`, 'warning');
-                } else {
-                    showAlert('任务已创建但尚未提交，请确认参数后点击"提交计算"。', 'info');
-                }
+                showAlert('任务已创建但尚未执行，请确认参数后点击"提交计算"。', 'info');
 
             } catch (error) {
                 console.error('加载任务失败:', error);
@@ -298,12 +320,12 @@
             }
         }
 
-        // 提交任务
+        // 提交任务（方案2：保存参数，等待平台触发）
         async function submitTask(taskId, params) {
             try {
-                showLoading(true, '正在生成K文件...');
+                showLoading(true, '正在保存参数...');
 
-                const response = await fetch(`${API_BASE}/task/submit`, {
+                const response = await fetch(`${API_BASE}/task/save`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -314,26 +336,62 @@
                     })
                 });
 
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.detail.message || error.detail || '提交失败');
-                }
-
                 const result = await response.json();
-
                 showLoading(false);
 
-                // 显示成功提示
-                alert('任务提交成功！\n' + result.message + '\n\n即将跳转到结果页面...');
+                if (response.ok && result.success) {
+                    // 保存成功
+                    showAlert(
+                        '<strong>参数保存成功！</strong><br>' +
+                        '任务状态：' + result.status_name + '<br>' +
+                        '等待平台触发执行。您可以关闭此页面，或稍后查看结果。',
+                        'success'
+                    );
 
-                // 跳转到输出页面
-                window.location.href = `output.html?task_id=${taskId}`;
+                    // 禁用表单，防止重复提交
+                    disableForm();
+
+                    // 显示查看结果按钮
+                    const viewBtn = document.getElementById('viewResultBtn');
+                    viewBtn.href = `output.html?task_id=${taskId}`;
+                    viewBtn.style.display = 'block';
+
+                } else if (response.status === 409) {
+                    // 任务已存在
+                    const statusName = result.current_status_name || '未知';
+                    showAlert(
+                        '<strong>任务已存在</strong><br>' +
+                        '当前状态：' + statusName + '<br>' +
+                        (result.current_status >= 1 ? '参数已锁定，无法修改。' : ''),
+                        'warning'
+                    );
+
+                    // 如果任务已在执行中或已完成，显示查看结果按钮
+                    if (result.current_status >= 1) {
+                        const viewBtn = document.getElementById('viewResultBtn');
+                        viewBtn.href = `output.html?task_id=${taskId}`;
+                        viewBtn.style.display = 'block';
+                    }
+                } else {
+                    // 其他错误
+                    const errorMsg = result.message || result.detail || '保存失败';
+                    showAlert('保存失败: ' + errorMsg, 'danger');
+                }
 
             } catch (error) {
                 showLoading(false);
-                showAlert('提交失败: ' + error.message, 'danger');
-                console.error('提交任务失败:', error);
+                showAlert('保存失败: ' + error.message, 'danger');
+                console.error('保存任务失败:', error);
             }
+        }
+
+        // 禁用表单
+        function disableForm() {
+            const form = document.getElementById('paramForm');
+            const inputs = form.querySelectorAll('input');
+            inputs.forEach(input => input.disabled = true);
+            document.getElementById('submitBtn').disabled = true;
+            document.getElementById('submitBtn').innerHTML = '<i class="bi bi-check-circle-fill"></i> 已保存';
         }
 
         // 页面加载完成
