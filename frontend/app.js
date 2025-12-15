@@ -152,6 +152,19 @@ async function submitCalculation() {
     const submitBtn = document.getElementById('submitBtn');
     const enablePostprocess = document.getElementById('enable_postprocess')?.checked || false;
 
+    // 收集后处理参数（如果启用）
+    let postprocessParams = null;
+    if (enablePostprocess) {
+        postprocessParams = {
+            resolution: document.getElementById('pp_resolution')?.value || '1920x1080',
+            fps: parseInt(document.getElementById('pp_fps')?.value) || 30,
+            view: document.getElementById('pp_view')?.value || 'isometric',
+            fringe: document.getElementById('pp_fringe')?.value || 'stress',
+            format: document.getElementById('pp_format')?.value || 'gif'
+        };
+        console.log('[提交计算] 后处理参数:', postprocessParams);
+    }
+
     // 显示加载遮罩
     showLoading(true, '正在提交计算任务...');
     if (submitBtn) submitBtn.disabled = true;
@@ -169,7 +182,8 @@ async function submitCalculation() {
             body: JSON.stringify({
                 task_id: taskId,
                 params: data,
-                enable_postprocess: enablePostprocess
+                enable_postprocess: enablePostprocess,
+                postprocess_params: postprocessParams
             })
         });
 
@@ -237,6 +251,20 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('[app.js] 表单提交事件绑定成功');
     } else {
         console.error('[app.js] 错误：找不到 paramForm 元素');
+    }
+
+    // 后处理选项切换
+    const enablePostprocess = document.getElementById('enable_postprocess');
+    const postprocessOptions = document.getElementById('postprocessOptions');
+    if (enablePostprocess && postprocessOptions) {
+        enablePostprocess.addEventListener('change', function() {
+            if (this.checked) {
+                postprocessOptions.classList.remove('d-none');
+            } else {
+                postprocessOptions.classList.add('d-none');
+            }
+        });
+        console.log('[app.js] 后处理选项切换绑定成功');
     }
 
     // 输入验证反馈（清除错误状态）
