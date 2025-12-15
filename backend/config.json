@@ -26,7 +26,7 @@
     "default_fps": "默认帧率（15-60）",
     "default_view": "默认视角: isometric, front, back, top, bottom, left, right",
     "default_fringe_variable": "默认云图变量: stress, strain, displacement, velocity, acceleration, plastic_strain",
-    "animation_output_format": "动画输出格式: gif, avi, mpeg（注意: LS-PrePost 4.8不支持mp4）"
+    "animation_output_format": "动画输出格式: gif（推荐，需要系统安装FFMPEG）, avi（无需FFMPEG但浏览器可能无法播放）"
   },
 
   "_setup_instructions": {
@@ -35,13 +35,16 @@
     "step3": "找到lsprepost可执行文件的完整路径，填入 lsprepost_executable",
     "step4": "确保路径中的反斜杠正确转义（Windows使用双反斜杠 \\\\ 或单斜杠 /）",
     "step5": "根据机器配置调整 lsdyna_cpu_count 和 lsdyna_timeout_minutes",
-    "step6": "启动后端服务: python backend/app.py"
+    "step6": "如需生成GIF动画，请安装FFMPEG并添加到系统PATH（下载地址: https://ffmpeg.org/download.html）",
+    "step7": "启动后端服务: python backend/app.py"
   },
 
   "_troubleshooting": {
     "error_lsdyna_not_found": "如果报错'LS-DYNA可执行文件不存在'，请检查 lsdyna_executable 路径是否正确",
     "error_lsprepost_not_found": "如果报错'LS-PrePost可执行文件不存在'，请检查 lsprepost_executable 路径是否正确",
     "error_timeout": "如果仿真经常超时，请增加 lsdyna_timeout_minutes 的值",
-    "error_permission_denied": "如果报错'权限拒绝'，请确保可执行文件有执行权限（Linux: chmod +x）"
+    "error_permission_denied": "如果报错'权限拒绝'，请确保可执行文件有执行权限（Linux: chmod +x）",
+    "error_gif_not_generated": "如果GIF未生成，可能是系统未安装FFMPEG。解决方案: 1) 安装FFMPEG 或 2) 将 animation_output_format 改为 avi",
+    "error_ffmpeg_not_found": "GIF转换需要系统FFMPEG。Windows用户请从 ffmpeg.org 下载，解压后将bin目录添加到系统PATH环境变量"
   }
 }

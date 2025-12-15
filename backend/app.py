@@ -976,15 +976,15 @@ async def get_queue_status():
 # ==================== 结果文件下载API端点 ====================
 
 @app.get("/api/task/{task_id}/result/gif")
-async def download_task_gif(task_id: str):
+async def download_task_animation(task_id: str):
     """
-    下载任务生成的GIF动画文件
+    下载任务生成的动画文件（支持GIF、AVI等格式）
 
     Args:
         task_id: 任务ID
 
     Returns:
-        GIF文件
+        动画文件
     """
     try:
         tm = get_task_manager()
@@ -997,20 +997,31 @@ async def download_task_gif(task_id: str):
         if not gif_path or not os.path.exists(gif_path):
             raise HTTPException(
                 status_code=404,
-                detail="GIF文件不存在（任务可能未启用后处理或尚未完成）"
+                detail="动画文件不存在（任务可能未启用后处理或尚未完成）"
             )
 
         filename = os.path.basename(gif_path)
+
+        # 根据文件扩展名设置正确的媒体类型
+        ext = os.path.splitext(filename)[1].lower()
+        media_types = {
+            ".gif": "image/gif",
+            ".avi": "video/x-msvideo",
+            ".mp4": "video/mp4",
+            ".mpeg": "video/mpeg",
+        }
+        media_type = media_types.get(ext, "application/octet-stream")
+
         return FileResponse(
             path=gif_path,
             filename=filename,
-            media_type="image/gif"
+            media_type=media_type
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"下载GIF失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"下载动画文件失败: {str(e)}")
 
 
 @app.get("/api/task/{task_id}/result/d3hsp")

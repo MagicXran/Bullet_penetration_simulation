@@ -438,11 +438,44 @@
                 document.getElementById('d3hspBtn').classList.remove('d-none');
             }
 
-            // 如果有GIF路径，显示动画
+            // 如果有动画文件路径，显示动画
             if (task.gif_path) {
-                document.getElementById('animationCard').classList.remove('d-none');
-                document.getElementById('animationGif').src =
-                    `${API_BASE}/task/${currentTaskId}/result/gif?t=${Date.now()}`;
+                const animationCard = document.getElementById('animationCard');
+                const animationPreview = document.getElementById('animationPreview');
+                animationCard.classList.remove('d-none');
+
+                // 根据文件扩展名决定显示方式
+                const filePath = task.gif_path.toLowerCase();
+                const apiUrl = `${API_BASE}/task/${currentTaskId}/result/gif?t=${Date.now()}`;
+
+                if (filePath.endsWith('.gif')) {
+                    // GIF使用img标签
+                    animationPreview.innerHTML = `
+                        <img id="animationGif" src="${apiUrl}" alt="仿真动画"
+                             style="max-width: 100%; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);">
+                    `;
+                } else if (filePath.endsWith('.avi') || filePath.endsWith('.mp4')) {
+                    // 视频文件使用video标签
+                    animationPreview.innerHTML = `
+                        <video id="animationVideo" controls autoplay loop muted
+                               style="max-width: 100%; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);">
+                            <source src="${apiUrl}" type="video/${filePath.endsWith('.mp4') ? 'mp4' : 'x-msvideo'}">
+                            您的浏览器不支持视频播放，请下载后查看。
+                        </video>
+                        <p class="text-muted mt-2" style="font-size: 0.85rem;">
+                            <i class="bi bi-info-circle"></i>
+                            如果视频无法播放，请点击下方按钮下载后使用本地播放器观看
+                        </p>
+                    `;
+                } else {
+                    // 其他格式显示下载提示
+                    animationPreview.innerHTML = `
+                        <div class="text-center text-muted py-4">
+                            <i class="bi bi-file-play" style="font-size: 3rem;"></i>
+                            <p class="mt-2">动画文件已生成，请点击下方按钮下载查看</p>
+                        </div>
+                    `;
+                }
             }
         }
 
