@@ -15,8 +15,8 @@
   "default_fringe_variable": "stress",
 
   "platform_a": {
-    "enabled": true,
-    "mode": "platform_a_only",
+    "enabled": false,
+    "mode": "standalone",
     "base_url": "http://platform-a.example.com",
     "task_insert_endpoint": "/simulApi/web-app/task-insert/",
     "task_update_endpoint": "/simulApi/web-app/task-update/",

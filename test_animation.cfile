@@ -1,31 +1,41 @@
-$# LS-PrePost手动测试脚本
-$# 生成时间: 2025-11-07
-$# 用途: 验证动画生成功能
-$#
-$# 使用方法:
-$# lsprepost4.8_x64.exe c=test_animation.cfile
+$# LS-PrePost 4.8 GIF Animation Script
+$# Tested on: LS-PrePost 4.8 x64
+c LS-PrePost 4.8 GIF Animation Script
+c Tested on: LS-PrePost 4.8 x64
+c 1) 打开 d3plot
+c 注意：cfile 里路径一般写成单反斜杠 G:\test1\d3plot
 
-$# 打开d3plot文件
-*OPEN "G:\\test1\\d3plot"
+$# 1) 打开 d3plot
+$#   注意：cfile 里路径一般写成单反斜杠 G:\test1\d3plot
+openc d3plot "G:\test1\d3plot" nodialog
 
-$# 设置云图变量（应力 - Effective Stress）
-*FRINGE 1 1
+c 2) 显示所有部件（可选）
+pall
 
-$# 设置相机视角（等角视图）
-*VIEW ISOMETRIC
+c 3) 设置视角方向
+c 这里示例：顶视图，如果想用前视图/右视图等，只改下一行命令即可：
+c 可选命令：front / back / left / right / top / bottom
+left
 
-$# 自动缩放模型到合适大小
-*SCALE AUTO
+c 设置彩虹色云图调色板
+palette rainbow
 
-$# 设置颜色方案（彩虹色谱）
-*PALETTE RAINBOW
+c 切换到彩色着色模式，而不是线框
+shad
 
-$# 输出MP4动画
-$# 格式: *OUTPUT MOVIE "路径" 宽度 高度 帧率
-*OUTPUT MOVIE "G:\\test1\\test_animation.mp4" 1920 1080 30
+c 4) 自动居中缩放（官方命令 ac）
+ac
 
-$# 播放并渲染动画
-*ANIMATE
+c 5) 设置 fringe 变量
+c 这里示例：fringe 1 1（和你之前脚本里“有效应力”用法一致）
+c fringe 1 1
 
-$# 完成后退出
-*QUIT
+c 打开图例和坐标轴（可选）
+showlegend 1
+showtriad 1
+
+movie GIF 1746x906 "G:\test1\movie_001" 1 30
+
+exit
+
+

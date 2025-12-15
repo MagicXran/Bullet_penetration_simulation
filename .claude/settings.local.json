@@ -1,8 +1,13 @@
 {
-  "outputStyle": "Learning",
   "permissions": {
     "allow": [
-      "mcp__sequential-thinking__sequentialthinking"
+      "mcp__sequential-thinking__sequentialthinking",
+      "Bash(dir /s /b \"D:\\Nercar\\NanGang\\PSD\\Apps\\Bullet_penetration_simulation\\generated\" 2)",
+      "Bash(nul)",
+      "WebSearch",
+      "Bash(find:*)",
+      "WebFetch(domain:ftp.lstc.com)"
     ]
-  }
+  },
+  "outputStyle": "Learning"
 }

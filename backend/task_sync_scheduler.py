@@ -20,6 +20,11 @@ from platform_sync import PlatformSyncClient
 
 logger = logging.getLogger(__name__)
 
+# 抑制APScheduler执行器的垃圾日志（每5秒执行一次即使无任务也输出INFO）
+# 只保留WARNING及以上级别，避免日志污染
+logging.getLogger('apscheduler.executors.default').setLevel(logging.WARNING)
+logging.getLogger('apscheduler.scheduler').setLevel(logging.WARNING)
+
 
 class TaskSyncScheduler:
     """任务同步调度器"""
