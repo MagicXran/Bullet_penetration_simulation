@@ -3,11 +3,12 @@
 """
 LS-DYNA K文件参数化系统 - FastAPI后端
 
-提供RESTful API接口，处理参数验证、K文件生成等功能
+提供RESTful API接口，处理参数验证、K文件生成、LS-DYNA计算等功能
 """
 
 import os
 import sys
+import json
 from datetime import datetime
 from typing import Dict, List, Optional
 from pathlib import Path
@@ -23,6 +24,57 @@ from pydantic import BaseModel, Field, field_validator
 # 添加backend目录到Python路径
 sys.path.insert(0, os.path.dirname(__file__))
 
+
+# ==================== 打包模式支持 ====================
+
+def is_frozen() -> bool:
+    """检测是否在 PyInstaller 打包模式下运行"""
+    return getattr(sys, 'frozen', False)
+
+
+def get_bundle_dir() -> Path:
+    """
+    获取打包资源目录（frontend/templates 等静态资源）
+
+    开发模式: 项目根目录
+    打包模式: PyInstaller 的 _MEIPASS 目录（_internal）
+    """
+    if is_frozen():
+        # PyInstaller 打包模式：数据文件在 _MEIPASS 目录
+        return Path(sys._MEIPASS)
+    else:
+        # 开发模式：backend/ 的父目录
+        return Path(__file__).parent.parent
+
+
+def get_application_dir() -> Path:
+    """
+    获取应用程序运行目录（用于存放用户数据：tasks、logs 等）
+
+    开发模式: backend/ 的父目录（项目根目录）
+    打包模式: exe 所在目录
+    """
+    if is_frozen():
+        # PyInstaller 打包模式：exe 所在目录
+        return Path(sys.executable).parent
+    else:
+        # 开发模式：backend/ 的父目录
+        return Path(__file__).parent.parent
+
+
+def get_backend_dir() -> Path:
+    """
+    获取配置文件目录（config.json 等用户可编辑文件）
+
+    开发模式: __file__ 所在目录
+    打包模式: exe 所在目录（config.json 放在 exe 同级）
+    """
+    if is_frozen():
+        return Path(sys.executable).parent
+    else:
+        return Path(__file__).parent
+
+
 from parameter_config import ParameterConfig
 from validators import ParameterValidator
 from k_engine import KFileEngine
@@ -32,8 +84,18 @@ from task_manager import TaskManager
 from platform_sync import PlatformSyncClient
 from task_sync_scheduler import TaskSyncScheduler
 from task_queue import init_task_queue, shutdown_task_queue, get_task_queue
+from database import TaskStatus
 
 # ==================== 应用生命周期管理 ====================
+
+def load_config() -> dict:
+    """加载配置文件"""
+    config_path = get_backend_dir() / "config.json"
+    if config_path.exists():
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -41,6 +103,10 @@ async def lifespan(app: FastAPI):
     # Startup
     global task_sync_scheduler
     print("[INFO] 应用启动中...")
+
+    # 加载配置
+    config = load_config()
+    print(f"[INFO] 配置加载完成: {len(config)} 项配置")
 
     # 启动任务同步调度器
     try:
@@ -59,7 +125,7 @@ async def lifespan(app: FastAPI):
             """K文件引擎工厂函数"""
             return KFileEngine(str(template_path))
 
-        init_task_queue(tm, k_engine_factory)
+        init_task_queue(tm, k_engine_factory, config)
         print("[INFO] 任务执行队列启动成功")
     except Exception as e:
         print(f"[WARNING] 任务执行队列启动失败: {e}")
@@ -94,14 +160,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 路径配置
-BASE_DIR = Path(__file__).parent.parent
-TEMPLATE_DIR = BASE_DIR / "templates"
-GENERATED_DIR = BASE_DIR / "generated"
-FRONTEND_DIR = BASE_DIR / "frontend"
+# 路径配置（兼容开发模式和打包模式）
+# 打包资源目录（frontend/templates - 只读，从 _MEIPASS 加载）
+BUNDLE_DIR = get_bundle_dir()
+TEMPLATE_DIR = BUNDLE_DIR / "templates"
+FRONTEND_DIR = BUNDLE_DIR / "frontend"
 
-# 确保目录存在
-GENERATED_DIR.mkdir(exist_ok=True)
+# 用户数据目录（tasks/logs - 可写，在 exe 同级目录）
+BASE_DIR = get_application_dir()
+
+# 任务目录（从配置加载，延迟初始化）
+def get_tasks_dir() -> Path:
+    """获取任务目录（从配置文件读取）"""
+    config = load_config()
+    tasks_dir = BASE_DIR / config.get("tasks_base_dir", "tasks")
+    tasks_dir.mkdir(parents=True, exist_ok=True)
+    return tasks_dir
 
 # 初始化动画生成器（延迟初始化，避免配置文件不存在时启动失败）
 animation_generator: Optional[AnimationGenerator] = None
@@ -141,20 +215,20 @@ def get_animation_generator() -> AnimationGenerator:
 # ==================== 数据模型 ====================
 
 class SimulationParameters(BaseModel):
-    """仿真参数模型"""
-    velocity_z: float = Field(..., description="弹丸初速度 (m/s)", ge=500, le=3000)
-    bullet_yield_stress: float = Field(..., description="弹丸屈服强度 (MPa)", ge=500, le=2000)
-    target_yield_stress: float = Field(..., description="靶板屈服强度 (MPa)", ge=200, le=1200)
-    friction_static: float = Field(..., description="静摩擦系数", ge=0.0, le=0.8)
-    friction_dynamic: float = Field(..., description="动摩擦系数", ge=0.0, le=0.6)
-    simulation_endtime: float = Field(..., description="仿真终止时间 (µs)", ge=10, le=100)
+    """仿真参数模型（放宽限制，允许更灵活的参数范围）"""
+    velocity_z: float = Field(..., description="弹丸初速度 (m/s)", ge=100, le=5000)
+    bullet_yield_stress: float = Field(..., description="弹丸屈服强度 (MPa)", ge=100, le=5000)
+    target_yield_stress: float = Field(..., description="靶板屈服强度 (MPa)", ge=50, le=3000)
+    friction_static: float = Field(..., description="静摩擦系数", ge=0.0, le=1.0)
+    friction_dynamic: float = Field(..., description="动摩擦系数", ge=0.0, le=1.0)
+    simulation_endtime: float = Field(..., description="仿真终止时间 (µs)", ge=1, le=500)
+    enable_postprocess: bool = Field(default=False, description="是否启用后处理（生成GIF动画）")
 
     @field_validator('friction_dynamic')
     @classmethod
     def validate_friction(cls, v, info):
-        """验证动摩擦不大于静摩擦"""
-        if 'friction_static' in info.data and v > info.data['friction_static']:
-            raise ValueError('动摩擦系数不应大于静摩擦系数')
+        """验证动摩擦不大于静摩擦（仅警告，不阻止）"""
+        # 不再抛出异常，只在验证API返回警告
         return v
 
     class Config:
@@ -165,7 +239,8 @@ class SimulationParameters(BaseModel):
                 "target_yield_stress": 800.0,
                 "friction_static": 0.25,
                 "friction_dynamic": 0.18,
-                "simulation_endtime": 30.0
+                "simulation_endtime": 30.0,
+                "enable_postprocess": False
             }
         }
 
@@ -222,6 +297,7 @@ class TaskSaveRequest(BaseModel):
     """任务保存请求模型（方案2：平台触发执行模式）"""
     task_id: str = Field(..., min_length=8, max_length=128, description="任务ID（平台A生成的UUID）")
     params: SimulationParameters = Field(..., description="仿真参数")
+    enable_postprocess: bool = Field(default=False, description="是否启用后处理（生成GIF动画）")
 
     class Config:
         json_schema_extra = {
@@ -234,7 +310,8 @@ class TaskSaveRequest(BaseModel):
                     "friction_static": 0.25,
                     "friction_dynamic": 0.18,
                     "simulation_endtime": 30.0
-                }
+                },
+                "enable_postprocess": True
             }
         }
 
@@ -427,10 +504,13 @@ async def generate_k_file(params: SimulationParameters):
                     f"原因: {skipped.get('reason', 'unknown')}"
                 )
 
-        # 6. 生成文件名
+        # 6. 生成文件名（使用任务目录结构）
+        task_dir = get_tasks_dir() / task_id
+        task_dir.mkdir(parents=True, exist_ok=True)
+
         summary = engine.get_parameter_summary()
         filename = f"bullet_sim_{task_id}_{summary}.k"
-        output_path = GENERATED_DIR / filename
+        output_path = task_dir / filename
 
         # 7. 生成K文件
         engine.generate(str(output_path), metadata={
@@ -482,7 +562,10 @@ async def list_generated_files():
         文件列表，包含文件名、生成时间、大小等信息
     """
     files = []
-    for file_path in GENERATED_DIR.glob("*.k"):
+    tasks_dir = get_tasks_dir()
+
+    # 遍历任务目录下的所有K文件
+    for file_path in tasks_dir.glob("**/*.k"):
         # 读取元数据
         metadata_path = file_path.with_suffix('.k_metadata.json')
         metadata = {}
@@ -514,10 +597,13 @@ async def download_file(filename: str):
     Returns:
         文件内容
     """
-    file_path = GENERATED_DIR / filename
-    if not file_path.exists():
+    tasks_dir = get_tasks_dir()
+    # 递归搜索（文件现在在 tasks/{task_id}/ 子目录中）
+    matches = list(tasks_dir.glob(f"**/{filename}"))
+    if not matches:
         raise HTTPException(status_code=404, detail="文件不存在")
 
+    file_path = matches[0]  # 取第一个匹配
     return FileResponse(
         path=str(file_path),
         filename=filename,
@@ -536,11 +622,14 @@ async def delete_file(filename: str):
     Returns:
         删除结果
     """
-    file_path = GENERATED_DIR / filename
-    metadata_path = file_path.with_suffix('.k_metadata.json')
-
-    if not file_path.exists():
+    tasks_dir = get_tasks_dir()
+    # 递归搜索（文件现在在 tasks/{task_id}/ 子目录中）
+    matches = list(tasks_dir.glob(f"**/{filename}"))
+    if not matches:
         raise HTTPException(status_code=404, detail="文件不存在")
+
+    file_path = matches[0]
+    metadata_path = file_path.with_suffix('.k_metadata.json')
 
     # 删除K文件
     file_path.unlink()
@@ -663,13 +752,14 @@ async def save_task(request: TaskSaveRequest):
                 })
 
         # 保存任务（状态为0-待执行）
-        task = tm.submit_task(task_id, param_dict, source='platform_a')
+        task = tm.submit_task(task_id, param_dict, source='platform_a', enable_postprocess=request.enable_postprocess)
 
         return {
             "success": True,
             "task_id": task_id,
             "status": 0,
             "status_name": "待执行",
+            "enable_postprocess": request.enable_postprocess,
             "message": "参数已保存，等待平台触发执行",
             "created_at": task.get('created_at')
         }
@@ -688,10 +778,12 @@ async def execute_task(task_id: str, request: TaskExecuteRequest = None):
     幂等性设计：
     - status=0（待执行）→ 加入队列，返回status=1
     - status=1（排队中）→ 返回当前状态和队列位置
-    - status=2（执行中）→ 返回当前状态和执行时间
+    - status=2（生成K文件中）→ 返回当前状态和进度
     - status=3（已完成）→ 返回结果
     - status=4（已失败）→ 返回错误信息
     - status=5（已中止）→ 返回错误
+    - status=6（LS-DYNA计算中）→ 返回当前状态和进度
+    - status=7（后处理中）→ 返回当前状态和进度
 
     Args:
         task_id: 任务ID
@@ -729,51 +821,73 @@ async def execute_task(task_id: str, request: TaskExecuteRequest = None):
         status = task['status']
 
         # 状态机处理（幂等性）
-        if status == 0:  # 待执行 → 加入队列
+        if status == TaskStatus.PENDING:  # 待执行 → 加入队列
             result = task_queue.enqueue(task_id)
             return {
                 "success": True,
                 "task_id": task_id,
-                "status": 1,
+                "status": TaskStatus.QUEUED,
                 "status_name": "排队中",
                 "message": "任务已加入执行队列",
                 "queue_position": result.get("queue_position"),
                 "estimated_wait_seconds": result.get("estimated_wait_seconds")
             }
 
-        elif status == 1:  # 排队中 → 返回队列位置
+        elif status == TaskStatus.QUEUED:  # 排队中 → 返回队列位置
             position = task_queue.get_task_position(task_id)
             return {
                 "success": True,
                 "task_id": task_id,
-                "status": 1,
+                "status": TaskStatus.QUEUED,
                 "status_name": "排队中",
                 "message": "任务已在队列中等待执行",
                 "queue_position": position if position else "即将执行"
             }
 
-        elif status == 2:  # 执行中 → 返回执行信息
+        elif status == TaskStatus.GENERATING:  # 生成K文件中 → 返回进度
+            return {
+                "success": True,
+                "task_id": task_id,
+                "status": TaskStatus.GENERATING,
+                "status_name": "生成K文件中",
+                "message": "正在生成K文件",
+                "progress": task.get("progress", 0),
+                "started_at": task.get("start_time")
+            }
+
+        elif status == TaskStatus.COMPUTING:  # LS-DYNA计算中 → 返回进度
             queue_status = task_queue.get_status()
             running = queue_status.get("running_task", {})
             return {
                 "success": True,
                 "task_id": task_id,
-                "status": 2,
-                "status_name": "执行中",
-                "message": "任务正在执行中",
-                "started_at": running.get("started_at") if running else task.get("start_time"),
+                "status": TaskStatus.COMPUTING,
+                "status_name": "LS-DYNA计算中",
+                "message": "LS-DYNA求解器正在计算",
+                "progress": task.get("progress", 30),
+                "compute_start_time": task.get("compute_start_time"),
                 "elapsed_seconds": running.get("elapsed_seconds") if running else None
             }
 
-        elif status == 3:  # 已完成 → 返回结果
+        elif status == TaskStatus.POSTPROCESSING:  # 后处理中 → 返回进度
+            return {
+                "success": True,
+                "task_id": task_id,
+                "status": TaskStatus.POSTPROCESSING,
+                "status_name": "后处理中",
+                "message": "LS-PrePost正在生成动画",
+                "progress": task.get("progress", 80)
+            }
+
+        elif status == TaskStatus.COMPLETED:  # 已完成 → 返回结果
             if force:
                 # 强制重新执行：重置状态为0，然后加入队列
-                tm.db.update_task_status(task_id, 0)
+                tm.db.update_task_status(task_id, TaskStatus.PENDING)
                 result = task_queue.enqueue(task_id)
                 return {
                     "success": True,
                     "task_id": task_id,
-                    "status": 1,
+                    "status": TaskStatus.QUEUED,
                     "status_name": "排队中",
                     "message": "任务已重置并加入执行队列",
                     "queue_position": result.get("queue_position")
@@ -782,22 +896,25 @@ async def execute_task(task_id: str, request: TaskExecuteRequest = None):
             return {
                 "success": True,
                 "task_id": task_id,
-                "status": 3,
+                "status": TaskStatus.COMPLETED,
                 "status_name": "已完成",
                 "message": "任务已完成",
+                "progress": 100,
                 "output_file_path": task.get("output_file_path"),
+                "gif_path": task.get("gif_path"),
+                "d3hsp_path": task.get("d3hsp_path"),
                 "completed_at": task.get("end_time")
             }
 
-        elif status == 4:  # 已失败 → 返回错误信息
+        elif status == TaskStatus.FAILED:  # 已失败 → 返回错误信息
             if force:
                 # 强制重新执行
-                tm.db.update_task_status(task_id, 0)
+                tm.db.update_task_status(task_id, TaskStatus.PENDING)
                 result = task_queue.enqueue(task_id)
                 return {
                     "success": True,
                     "task_id": task_id,
-                    "status": 1,
+                    "status": TaskStatus.QUEUED,
                     "status_name": "排队中",
                     "message": "任务已重置并加入执行队列",
                     "queue_position": result.get("queue_position")
@@ -806,21 +923,22 @@ async def execute_task(task_id: str, request: TaskExecuteRequest = None):
             return {
                 "success": True,
                 "task_id": task_id,
-                "status": 4,
+                "status": TaskStatus.FAILED,
                 "status_name": "已失败",
                 "message": "任务执行失败",
                 "error_message": task.get("error_message"),
+                "error_log_path": task.get("error_log_path"),
                 "failed_at": task.get("end_time")
             }
 
-        elif status == 5:  # 已中止 → 不允许执行
+        elif status == TaskStatus.ABORTED:  # 已中止 → 不允许执行
             return JSONResponse(
                 status_code=400,
                 content={
                     "success": False,
                     "error": "INVALID_STATE",
                     "message": "任务已中止，无法执行",
-                    "current_status": 5,
+                    "current_status": TaskStatus.ABORTED,
                     "current_status_name": "已中止"
                 }
             )
@@ -853,6 +971,160 @@ async def get_queue_status():
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"查询队列状态失败: {str(e)}")
+
+
+# ==================== 结果文件下载API端点 ====================
+
+@app.get("/api/task/{task_id}/result/gif")
+async def download_task_gif(task_id: str):
+    """
+    下载任务生成的GIF动画文件
+
+    Args:
+        task_id: 任务ID
+
+    Returns:
+        GIF文件
+    """
+    try:
+        tm = get_task_manager()
+        task = tm.get_task(task_id)
+
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+
+        gif_path = task.get("gif_path")
+        if not gif_path or not os.path.exists(gif_path):
+            raise HTTPException(
+                status_code=404,
+                detail="GIF文件不存在（任务可能未启用后处理或尚未完成）"
+            )
+
+        filename = os.path.basename(gif_path)
+        return FileResponse(
+            path=gif_path,
+            filename=filename,
+            media_type="image/gif"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"下载GIF失败: {str(e)}")
+
+
+@app.get("/api/task/{task_id}/result/d3hsp")
+async def download_task_d3hsp(task_id: str):
+    """
+    下载任务的d3hsp日志文件
+
+    Args:
+        task_id: 任务ID
+
+    Returns:
+        d3hsp文本文件
+    """
+    try:
+        tm = get_task_manager()
+        task = tm.get_task(task_id)
+
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+
+        d3hsp_path = task.get("d3hsp_path")
+        if not d3hsp_path or not os.path.exists(d3hsp_path):
+            raise HTTPException(
+                status_code=404,
+                detail="d3hsp文件不存在（任务可能尚未完成计算）"
+            )
+
+        filename = os.path.basename(d3hsp_path)
+        return FileResponse(
+            path=d3hsp_path,
+            filename=filename,
+            media_type="text/plain"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"下载d3hsp失败: {str(e)}")
+
+
+@app.get("/api/task/{task_id}/result/error_log")
+async def download_task_error_log(task_id: str):
+    """
+    下载任务的错误日志文件
+
+    Args:
+        task_id: 任务ID
+
+    Returns:
+        错误日志文本文件
+    """
+    try:
+        tm = get_task_manager()
+        task = tm.get_task(task_id)
+
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+
+        error_log_path = task.get("error_log_path")
+        if not error_log_path or not os.path.exists(error_log_path):
+            raise HTTPException(
+                status_code=404,
+                detail="错误日志不存在（任务可能未失败或日志已清理）"
+            )
+
+        filename = os.path.basename(error_log_path)
+        return FileResponse(
+            path=error_log_path,
+            filename=filename,
+            media_type="text/plain"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"下载错误日志失败: {str(e)}")
+
+
+@app.get("/api/task/{task_id}/result/k_file")
+async def download_task_k_file(task_id: str):
+    """
+    下载任务生成的K文件
+
+    Args:
+        task_id: 任务ID
+
+    Returns:
+        K文件
+    """
+    try:
+        tm = get_task_manager()
+        task = tm.get_task(task_id)
+
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+
+        k_file_path = task.get("output_file_path")
+        if not k_file_path or not os.path.exists(k_file_path):
+            raise HTTPException(
+                status_code=404,
+                detail="K文件不存在（任务可能尚未完成生成）"
+            )
+
+        filename = os.path.basename(k_file_path)
+        return FileResponse(
+            path=k_file_path,
+            filename=filename,
+            media_type="application/octet-stream"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"下载K文件失败: {str(e)}")
 
 
 @app.post("/api/task/submit")
@@ -926,11 +1198,14 @@ async def submit_task(request: TaskSubmitRequest):
                     f"参数 '{skipped['param_name']}' 无法自动定位，已保持默认值。"
                 )
 
-        # 4. 生成K文件
+        # 4. 生成K文件（在任务专属目录中）
+        task_dir = get_tasks_dir() / task_id
+        task_dir.mkdir(parents=True, exist_ok=True)
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         summary = engine.get_parameter_summary()
         filename = f"bullet_sim_{task_id}_{timestamp}_{summary}.k"
-        output_path = GENERATED_DIR / filename
+        output_path = task_dir / filename
 
         engine.generate(str(output_path), metadata={
             "task_id": task_id,
@@ -1151,22 +1426,38 @@ if FRONTEND_DIR.exists():
 if __name__ == "__main__":
     import uvicorn
 
+    frozen = is_frozen()
+    mode_text = "打包模式" if frozen else "开发模式"
+
     print("="*60)
-    print("LS-DYNA K文件参数化系统 - 启动中...")
+    print(f"LS-DYNA K文件参数化系统 - 启动中... ({mode_text})")
     print("="*60)
-    print(f"模板目录: {TEMPLATE_DIR}")
-    print(f"生成目录: {GENERATED_DIR}")
-    print(f"前端目录: {FRONTEND_DIR}")
+    print(f"资源目录: {BUNDLE_DIR}")
+    print(f"数据目录: {BASE_DIR}")
+    print(f"模板目录: {TEMPLATE_DIR} {'✓' if TEMPLATE_DIR.exists() else '✗ 不存在!'}")
+    print(f"前端目录: {FRONTEND_DIR} {'✓' if FRONTEND_DIR.exists() else '✗ 不存在!'}")
+    print(f"任务目录: {get_tasks_dir()}")
+    print(f"配置文件: {get_backend_dir() / 'config.json'}")
     print("="*60)
     print("访问地址:")
     print("  - Web界面: http://localhost:8000")
     print("  - API文档: http://localhost:8000/docs")
     print("="*60)
 
-    uvicorn.run(
-        "app:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,  # 开发模式自动重载
-        log_level="info"
-    )
+    if frozen:
+        # 打包模式：直接传 app 对象，禁用 reload
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=8000,
+            log_level="info"
+        )
+    else:
+        # 开发模式：使用字符串引用，启用热重载
+        uvicorn.run(
+            "app:app",
+            host="0.0.0.0",
+            port=8000,
+            reload=True,
+            log_level="info"
+        )

@@ -62,9 +62,6 @@ class AnimationGenerator:
         # 验证LS-PrePost可执行文件
         self._verify_lsprepost()
 
-        # 确保输出目录存在
-        os.makedirs(self.config["animation_output_dir"], exist_ok=True)
-
     def _load_config(self) -> dict:
         """加载配置文件
 
@@ -84,8 +81,8 @@ class AnimationGenerator:
         with open(self.config_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
 
-        # 验证必需的配置项
-        required_keys = ["lsprepost_executable", "animation_output_dir"]
+        # 验证必需的配置项（不再需要animation_output_dir）
+        required_keys = ["lsprepost_executable"]
         missing_keys = [k for k in required_keys if k not in config]
         if missing_keys:
             raise ValueError(f"配置文件缺少必需项: {', '.join(missing_keys)}")
@@ -275,20 +272,15 @@ movie {output_format} {width}x{height} "{output_path_escaped}" {start_frame} {en
             with self.task_lock:
                 task.mark_processing()
 
-            # 生成输出文件名
+            # 输出到d3plot所在目录（最自然的行为）
+            d3plot_dir = os.path.dirname(task.d3plot_path)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_filename = f"animation_{timestamp}_{task.task_id[:8]}.{task.config.output_format}"
-            output_path = os.path.join(
-                self.config["animation_output_dir"],
-                output_filename
-            )
+            output_path = os.path.join(d3plot_dir, output_filename)
 
-            # 生成CFILE脚本
+            # 生成CFILE脚本（也放在d3plot目录）
             cfile_filename = f"cfile_{task.task_id[:8]}.cfile"
-            cfile_path = os.path.join(
-                self.config["animation_output_dir"],
-                cfile_filename
-            )
+            cfile_path = os.path.join(d3plot_dir, cfile_filename)
 
             cfile_content = self._generate_cfile(
                 task.d3plot_path,

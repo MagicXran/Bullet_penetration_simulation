@@ -126,7 +126,7 @@ GET /api/task/{task_id}
         "friction_dynamic": 0.18,
         "simulation_endtime": 30.0
     },
-    "output_file_path": "D:\\...\\generated\\bullet_sim_xxx.k",
+    "output_file_path": "D:\\...\\tasks\\{task_id}\\bullet_sim_xxx.k",
     "start_time": "2025-12-02T15:54:55.123456",
     "end_time": "2025-12-02T15:54:55.577092",
     "error_message": null
@@ -163,7 +163,7 @@ GET /api/download/{filename}
 ```
 
 从 `output_file_path` 提取文件名，例如：
-- `output_file_path`: `D:\...\generated\bullet_sim_xxx.k`
+- `output_file_path`: `D:\...\tasks\{task_id}\bullet_sim_xxx.k`
 - 下载URL: `GET /api/download/bullet_sim_xxx.k`
 
 ## 3. 联调检查清单

@@ -436,11 +436,10 @@ Linux额外要求:
 
 ```json
 {
-    "lsprepost_executable": "E:\\ansys22r2\\ANSYS Inc\\v222\\ansys\\bin\\winx64\\lsprepost48\\lsprepost4.8_x64.exe",
-    "animation_output_dir": "D:\\Simulations\\animations",
+    "lsprepost_executable": "C:\\Program Files\\LSTC\\LS-PrePost 4.9\\lsprepost4.9_x64.exe",
+    "tasks_base_dir": "tasks",
     "default_resolution": [1920, 1080],
-    "default_format": "gif",
-    "max_timeout_seconds": 600
+    "animation_output_format": "gif"
 }
 ```
 
@@ -448,7 +447,7 @@ Linux额外要求:
 ```json
 {
     "lsprepost_executable": "/opt/ansys_inc/v222/ansys/bin/linx64/lsprepost4.8",
-    "animation_output_dir": "/data/animations",
+    "tasks_base_dir": "tasks",
     "use_xvfb": true
 }
 ```

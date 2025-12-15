@@ -1,59 +1,47 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "description": "LS-PrePost动画生成系统配置文件",
+  "description": "LS-DYNA 子弹穿透仿真系统配置文件",
+
+  "lsdyna_executable": "C:\\Program Files\\LSTC\\LS-DYNA\\ls-dyna_smp_s_R13.exe",
+  "lsdyna_cpu_count": 1,
+  "lsdyna_timeout_minutes": 99999999,
 
   "lsprepost_executable": "C:\\Program Files\\LSTC\\LS-PrePost 4.9\\lsprepost4.9_x64.exe",
 
-  "animation_output_dir": "generated/animations",
+  "tasks_base_dir": "tasks",
 
   "default_resolution": [1920, 1080],
-
   "default_fps": 30,
-
   "default_view": "isometric",
-
   "default_fringe_variable": "stress",
-
-  "platform_a": {
-    "enabled": false,
-    "mode": "standalone",
-    "base_url": "http://platform-a.example.com",
-    "task_insert_endpoint": "/simulApi/web-app/task-insert/",
-    "task_update_endpoint": "/simulApi/web-app/task-update/",
-    "timeout": 10,
-    "sync_interval": 5
-  },
+  "animation_output_format": "gif",
 
   "_comments": {
-    "lsprepost_executable": "LS-PrePost可执行文件的绝对路径。Windows示例: C:\\Program Files\\LSTC\\LS-PrePost 4.9\\lsprepost4.9_x64.exe, Linux示例: /usr/local/lsprepost/lspp",
-    "animation_output_dir": "动画输出目录（相对于项目根目录）",
+    "lsdyna_executable": "LS-DYNA求解器可执行文件的绝对路径。Windows示例: C:\\Program Files\\LSTC\\LS-DYNA\\ls-dyna_smp_s_R13.exe",
+    "lsdyna_cpu_count": "LS-DYNA求解使用的CPU核心数（建议设置为物理核心数-1）",
+    "lsdyna_timeout_minutes": "LS-DYNA求解超时时间（分钟），超时后自动终止",
+    "lsprepost_executable": "LS-PrePost可执行文件路径，用于后处理生成动画",
+    "tasks_base_dir": "任务目录基路径（相对于项目根目录），每个任务在 tasks/{task_id}/ 下有独立工作空间，包含K文件、LS-DYNA输出、动画等所有产出",
     "default_resolution": "默认视频分辨率 [宽度, 高度]",
     "default_fps": "默认帧率（15-60）",
     "default_view": "默认视角: isometric, front, back, top, bottom, left, right",
     "default_fringe_variable": "默认云图变量: stress, strain, displacement, velocity, acceleration, plastic_strain",
-    "platform_a": {
-      "enabled": "是否启用平台A集成（true/false）。设置为false可独立使用本系统",
-      "mode": "运行模式: standalone=仅独立模式, platform_a_only=仅平台A模式, hybrid=双模式并存（推荐）",
-      "base_url": "平台A的基础URL地址。例如: http://192.168.1.100:8080",
-      "task_insert_endpoint": "平台A的任务插入接口路径",
-      "task_update_endpoint": "平台A的任务状态更新接口路径",
-      "timeout": "HTTP请求超时时间（秒）",
-      "sync_interval": "后台同步任务状态的间隔时间（秒）"
-    }
+    "animation_output_format": "动画输出格式: gif, avi, mpeg（注意: LS-PrePost 4.8不支持mp4）"
   },
 
   "_setup_instructions": {
-    "step1": "安装LS-PrePost软件",
-    "step2": "找到lsprepost可执行文件的完整路径",
-    "step3": "将上面的路径填入 lsprepost_executable 配置项",
+    "step1": "安装LS-DYNA求解器和LS-PrePost后处理软件",
+    "step2": "找到ls-dyna可执行文件的完整路径，填入 lsdyna_executable",
+    "step3": "找到lsprepost可执行文件的完整路径，填入 lsprepost_executable",
     "step4": "确保路径中的反斜杠正确转义（Windows使用双反斜杠 \\\\ 或单斜杠 /）",
-    "step5": "保存此文件为 backend/config.json",
+    "step5": "根据机器配置调整 lsdyna_cpu_count 和 lsdyna_timeout_minutes",
     "step6": "启动后端服务: python backend/app.py"
   },
 
   "_troubleshooting": {
-    "error_file_not_found": "如果报错'配置文件不存在'，请确保此文件保存在 backend/config.json",
+    "error_lsdyna_not_found": "如果报错'LS-DYNA可执行文件不存在'，请检查 lsdyna_executable 路径是否正确",
     "error_lsprepost_not_found": "如果报错'LS-PrePost可执行文件不存在'，请检查 lsprepost_executable 路径是否正确",
-    "error_permission_denied": "如果报错'权限拒绝'，请确保LS-PrePost有执行权限（Linux: chmod +x）"
+    "error_timeout": "如果仿真经常超时，请增加 lsdyna_timeout_minutes 的值",
+    "error_permission_denied": "如果报错'权限拒绝'，请确保可执行文件有执行权限（Linux: chmod +x）"
   }
 }

@@ -3,3 +3,5 @@ uvicorn[standard]==0.27.0
 pydantic==2.5.3
 python-multipart==0.0.6
 httpx
+apscheduler>=3.10.0
+pyinstaller>=6.0.0

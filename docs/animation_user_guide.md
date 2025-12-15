@@ -68,14 +68,15 @@ E:\ansys22r2\ANSYS Inc\v222\ansys\bin\winx64\lsprepost48\lsprepost4.8_x64.exe
 
 ```json
 {
-  "lsprepost_executable": "E:\\ansys22r2\\ANSYS Inc\\v222\\ansys\\bin\\winx64\\lsprepost48\\lsprepost4.8_x64.exe",
-  "animation_output_dir": "D:\\Simulations\\animations"
+  "lsprepost_executable": "C:\\Program Files\\LSTC\\LS-PrePost 4.9\\lsprepost4.9_x64.exe",
+  "tasks_base_dir": "tasks"
 }
 ```
 
 **注意事项**：
 - Windows路径使用双反斜杠 `\\` 或单斜杠 `/`
-- 确保路径指向实际的LS-PrePost 4.8可执行文件
+- 确保路径指向实际的LS-PrePost可执行文件
+- 动画文件会输出到d3plot所在目录（即 `tasks/{task_id}/`）
 - 如果文件不存在，复制 `backend/config.json.template` 并修改
 
 ### 步骤3: 验证配置
@@ -265,13 +266,15 @@ ffmpeg -i animation.gif -movflags faststart -pix_fmt yuv420p animation.mp4
 
 ### 生成的文件存储位置
 
-所有动画文件存储在 `config.json` 中配置的 `animation_output_dir` 目录：
+动画文件存储在d3plot所在的任务目录中（统一在 `tasks/{task_id}/` 下）：
 ```
-D:\Simulations\animations\
-├── animation_20251117_143022_a1b2c3d4.gif      ← GIF动画
-├── animation_20251117_143055_b2c3d4e5.avi      ← AVI动画
-├── cfile_a1b2c3d4.cfile                        ← CFILE脚本（调试用）
-└── ...
+tasks/
+└── {task_id}/
+    ├── bullet_sim_xxx.k                           ← 生成的K文件
+    ├── d3plot, d3plot01, d3plot02...              ← LS-DYNA输出
+    ├── animation_20251117_143022_a1b2c3d4.gif     ← GIF动画
+    ├── cfile_a1b2c3d4.cfile                       ← CFILE脚本（调试用）
+    └── d3hsp                                      ← 计算日志
 ```
 
 ### 文件命名规则
@@ -381,9 +384,9 @@ tail -f lspost.msg
 
 ### 查看CFILE脚本
 
-系统生成的CFILE脚本存储在：
+系统生成的CFILE脚本存储在d3plot所在目录：
 ```
-{animation_output_dir}/cfile_{任务ID}.cfile
+{任务目录}/cfile_{任务ID}.cfile
 ```
 
 **LS-PrePost 4.8 格式示例**：
@@ -517,13 +520,12 @@ Simulations/
 
 动画文件会占用大量磁盘空间，建议：
 - 完成分析后，下载需要的动画
-- 定期清理 `animation_output_dir` 目录
-- 保留重要案例的动画文件
+- 定期清理 `tasks/` 目录下不需要的任务目录
+- 保留重要案例的完整任务目录
 
-**批量删除CFILE脚本**:
+**删除单个任务的所有文件**:
 ```cmd
-cd D:\Simulations\animations
-del cfile_*.cfile
+rd /s /q tasks\{task_id}
 ```
 
 ---

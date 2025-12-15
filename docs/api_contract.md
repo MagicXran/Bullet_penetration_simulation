@@ -53,7 +53,7 @@ Content-Type: application/json
     "status": 3,
     "status_name": "已完成",
     "message": "任务已完成",
-    "output_file_path": "D:\\...\\generated\\bullet_sim_xxx.k",
+    "output_file_path": "D:\\...\\tasks\\{task_id}\\bullet_sim_xxx.k",
     "completed_at": "2025-12-02T15:54:55.577092"
 }
 ```
@@ -102,7 +102,7 @@ GET /api/task/550e8400-e29b-41d4-a716-446655440000
         "friction_dynamic": 0.18,
         "simulation_endtime": 30.0
     },
-    "output_file_path": "D:\\...\\generated\\bullet_sim_xxx.k",
+    "output_file_path": "D:\\...\\tasks\\{task_id}\\bullet_sim_xxx.k",
     "created_at": "2025-12-02T15:54:49.123456",
     "start_time": "2025-12-02T15:54:55.123456",
     "end_time": "2025-12-02T15:54:55.577092",

@@ -101,7 +101,7 @@ flowchart TB
     subgraph 数据层
         SQLite[(SQLite<br/>tasks.db)]
         Templates[模板文件<br/>templates/1.k]
-        Generated[生成目录<br/>generated/]
+        TasksDir[任务目录<br/>tasks/{task_id}/]
     end
 
     subgraph 外部系统
@@ -171,7 +171,7 @@ sequenceDiagram
     Note over API: 验证参数
     API->>Engine: 6. 加载模板 templates/1.k
     Engine->>Engine: 7. 替换6个参数
-    Engine->>FS: 8. 写入 generated/*.k
+    Engine->>FS: 8. 写入 tasks/{task_id}/*.k
 
     API->>DB: 9. 创建任务记录<br/>source='standalone'
     DB-->>API: 10. 返回task_id
@@ -497,7 +497,12 @@ Bullet_penetration_simulation/
 │   └── style.css                 # 样式文件
 ├── templates/
 │   └── 1.k                       # K文件模板 (275687行, 21MB)
-├── generated/                    # 生成的K文件目录
+├── tasks/                        # 任务工作目录
+│   └── {task_id}/                # 每个任务独立目录
+│       ├── *.k                   # 生成的K文件
+│       ├── d3plot*               # LS-DYNA输出文件
+│       ├── *.gif                 # 动画文件
+│       └── d3hsp                 # 计算日志
 └── docs/                         # 文档目录
 ```
 
@@ -547,10 +552,16 @@ flowchart LR
     "sync_interval": 5,
     "max_retry": 3
   },
-  "lsprepost_executable": "E:\\ansys22r2\\ANSYS Inc\\v222\\ansys\\bin\\winx64\\lsprepost48\\lsprepost4.8_x64.exe",
-  "animation_output_dir": "D:\\Simulations\\animations",
+  "lsdyna_executable": "C:\\Program Files\\LSTC\\LS-DYNA\\ls-dyna_smp_s_R13.exe",
+  "lsdyna_cpu_count": 4,
+  "lsdyna_timeout_minutes": 60,
+  "lsprepost_executable": "C:\\Program Files\\LSTC\\LS-PrePost 4.9\\lsprepost4.9_x64.exe",
+  "tasks_base_dir": "tasks",
   "default_resolution": [1920, 1080],
-  "default_format": "gif"
+  "default_fps": 30,
+  "default_view": "isometric",
+  "default_fringe_variable": "stress",
+  "animation_output_format": "gif"
 }
 ```
 

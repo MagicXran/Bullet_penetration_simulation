@@ -18,20 +18,24 @@ class TaskManager:
     """任务管理器"""
 
     # 任务状态常量
-    STATUS_PENDING = 0      # 待提交
-    STATUS_QUEUED = 1       # 排队中
-    STATUS_RUNNING = 2      # 运行中
-    STATUS_COMPLETED = 3    # 已完成
-    STATUS_FAILED = 4       # 失败
-    STATUS_ABORTED = 5      # 中止
+    STATUS_PENDING = 0         # 待提交
+    STATUS_QUEUED = 1          # 排队中
+    STATUS_GENERATING = 2      # 生成K文件中
+    STATUS_COMPLETED = 3       # 已完成
+    STATUS_FAILED = 4          # 失败
+    STATUS_ABORTED = 5         # 中止
+    STATUS_COMPUTING = 6       # LS-DYNA计算中
+    STATUS_POSTPROCESSING = 7  # 后处理中
 
     STATUS_NAMES = {
         0: "待提交",
         1: "排队中",
-        2: "运行中",
+        2: "生成K文件中",
         3: "已完成",
         4: "失败",
-        5: "中止"
+        5: "中止",
+        6: "计算中",
+        7: "后处理中"
     }
 
     def __init__(self, db_path: str = "backend/tasks.db"):
@@ -47,7 +51,8 @@ class TaskManager:
         self,
         task_id: str,
         input_params: Optional[Dict[str, Any]] = None,
-        source: str = 'platform_a'
+        source: str = 'platform_a',
+        enable_postprocess: bool = False
     ) -> Dict[str, Any]:
         """
         创建任务或获取已存在的任务
@@ -60,6 +65,7 @@ class TaskManager:
             task_id: 任务ID
             input_params: 输入参数（新建任务时必需）
             source: 任务来源 ('standalone' | 'platform_a')
+            enable_postprocess: 是否启用后处理
 
         Returns:
             任务字典
@@ -79,7 +85,7 @@ class TaskManager:
             )
 
         # 创建新任务
-        success = self.db.create_task(task_id, input_params, source=source)
+        success = self.db.create_task(task_id, input_params, source=source, enable_postprocess=enable_postprocess)
         if not success:
             # 理论上不会到这里（因为前面已经查过），但保险起见再查一次
             return self.db.get_task(task_id)
@@ -103,7 +109,8 @@ class TaskManager:
         self,
         task_id: str,
         input_params: Dict[str, Any],
-        source: str = 'platform_a'
+        source: str = 'platform_a',
+        enable_postprocess: bool = False
     ) -> Dict[str, Any]:
         """
         提交任务（用户点击"提交计算"按钮时调用）
@@ -112,12 +119,13 @@ class TaskManager:
             task_id: 任务ID
             input_params: 输入参数
             source: 任务来源 ('standalone' | 'platform_a')
+            enable_postprocess: 是否启用后处理
 
         Returns:
             更新后的任务字典
         """
         # 确保任务存在
-        task = self.create_or_get_task(task_id, input_params, source=source)
+        task = self.create_or_get_task(task_id, input_params, source=source, enable_postprocess=enable_postprocess)
 
         # 记录提交时间
         submission_time = datetime.now().isoformat()

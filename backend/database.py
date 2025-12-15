@@ -4,6 +4,16 @@
 数据库操作层 - SQLite数据库封装
 
 遵循第一性原理：一张表解决所有任务状态管理问题
+
+状态码定义：
+    0 - 待提交 (pending)
+    1 - 排队中 (queued)
+    2 - 生成K文件中 (generating)
+    3 - 已完成 (completed)
+    4 - 失败 (failed)
+    5 - 已中止 (aborted)
+    6 - LS-DYNA计算中 (computing)
+    7 - 后处理中 (postprocessing)
 """
 
 import sqlite3
@@ -12,6 +22,34 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 from contextlib import contextmanager
+from enum import IntEnum
+
+
+class TaskStatus(IntEnum):
+    """任务状态枚举"""
+    PENDING = 0           # 待提交
+    QUEUED = 1            # 排队中
+    GENERATING = 2        # 生成K文件中
+    COMPLETED = 3         # 已完成
+    FAILED = 4            # 失败
+    ABORTED = 5           # 已中止
+    COMPUTING = 6         # LS-DYNA计算中
+    POSTPROCESSING = 7    # 后处理中
+
+    @classmethod
+    def get_display_name(cls, status: int) -> str:
+        """获取状态显示名称"""
+        names = {
+            0: "待提交",
+            1: "排队中",
+            2: "生成K文件中",
+            3: "已完成",
+            4: "失败",
+            5: "已中止",
+            6: "计算中",
+            7: "后处理中"
+        }
+        return names.get(status, "未知")
 
 
 class Database:
@@ -58,7 +96,7 @@ class Database:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS tasks (
                     task_id TEXT PRIMARY KEY,
-                    source TEXT NOT NULL DEFAULT 'platform_a',
+                    source TEXT NOT NULL DEFAULT 'standalone',
                     input_params TEXT NOT NULL,
                     output_file_path TEXT,
                     status INTEGER NOT NULL DEFAULT 0,
@@ -95,14 +133,27 @@ class Database:
                 ON tasks(created_at DESC)
             """)
 
-            # 尝试添加 queued_at 列（如果表已存在但没有该列）
-            # 必须在创建引用该列的索引之前执行
-            try:
-                cursor.execute("ALTER TABLE tasks ADD COLUMN queued_at TEXT")
-            except sqlite3.OperationalError:
-                pass  # 列已存在，忽略错误
+            # 添加新列（如果不存在）
+            new_columns = [
+                ("queued_at", "TEXT"),
+                ("k_file_content", "TEXT"),           # K文件内容
+                ("work_directory", "TEXT"),           # 工作目录路径
+                ("gif_path", "TEXT"),                 # GIF动画文件路径
+                ("d3hsp_path", "TEXT"),               # d3hsp日志文件路径
+                ("error_log_path", "TEXT"),           # 错误日志文件路径
+                ("enable_postprocess", "INTEGER DEFAULT 0"),  # 是否启用后处理
+                ("compute_start_time", "TEXT"),       # 计算开始时间
+                ("compute_end_time", "TEXT"),         # 计算结束时间
+                ("progress", "INTEGER DEFAULT 0"),    # 进度百分比 (0-100)
+            ]
 
-            # 创建 queued_at 相关索引（必须在 ALTER TABLE 之后）
+            for col_name, col_type in new_columns:
+                try:
+                    cursor.execute(f"ALTER TABLE tasks ADD COLUMN {col_name} {col_type}")
+                except sqlite3.OperationalError:
+                    pass  # 列已存在，忽略错误
+
+            # 创建 queued_at 相关索引
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_status_queued
                 ON tasks(status, queued_at)
@@ -112,7 +163,8 @@ class Database:
         self,
         task_id: str,
         input_params: Dict[str, Any],
-        source: str = 'platform_a'
+        source: str = 'standalone',
+        enable_postprocess: bool = False
     ) -> bool:
         """
         创建新任务
@@ -121,6 +173,7 @@ class Database:
             task_id: 任务ID
             input_params: 输入参数字典
             source: 任务来源 ('standalone' | 'platform_a')
+            enable_postprocess: 是否启用后处理
 
         Returns:
             是否创建成功
@@ -133,9 +186,10 @@ class Database:
                 cursor.execute("""
                     INSERT INTO tasks (
                         task_id, source, input_params, status,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, 0, ?, ?)
-                """, (task_id, source, json.dumps(input_params), now, now))
+                        enable_postprocess, created_at, updated_at
+                    ) VALUES (?, ?, ?, 0, ?, ?, ?)
+                """, (task_id, source, json.dumps(input_params),
+                      1 if enable_postprocess else 0, now, now))
                 return True
             except sqlite3.IntegrityError:
                 # task_id已存在
@@ -170,19 +224,35 @@ class Database:
         end_time: Optional[str] = None,
         error_message: Optional[str] = None,
         output_file_path: Optional[str] = None,
-        queued_at: Optional[str] = None
+        queued_at: Optional[str] = None,
+        k_file_content: Optional[str] = None,
+        work_directory: Optional[str] = None,
+        gif_path: Optional[str] = None,
+        d3hsp_path: Optional[str] = None,
+        error_log_path: Optional[str] = None,
+        compute_start_time: Optional[str] = None,
+        compute_end_time: Optional[str] = None,
+        progress: Optional[int] = None
     ) -> bool:
         """
         更新任务状态
 
         Args:
             task_id: 任务ID
-            status: 状态码 (0-待提交, 1-排队中, 2-运行中, 3-已完成, 4-失败, 5-中止)
+            status: 状态码 (参见 TaskStatus 枚举)
             start_time: 开始时间
             end_time: 结束时间
             error_message: 错误信息
             output_file_path: 输出文件路径
             queued_at: 加入队列时间
+            k_file_content: K文件内容
+            work_directory: 工作目录路径
+            gif_path: GIF文件路径
+            d3hsp_path: d3hsp文件路径
+            error_log_path: 错误日志路径
+            compute_start_time: 计算开始时间
+            compute_end_time: 计算结束时间
+            progress: 进度百分比
 
         Returns:
             是否更新成功
@@ -196,25 +266,26 @@ class Database:
             fields = ["status = ?", "updated_at = ?"]
             values = [status, now]
 
-            if start_time is not None:
-                fields.append("start_time = ?")
-                values.append(start_time)
+            optional_fields = [
+                ("start_time", start_time),
+                ("end_time", end_time),
+                ("error_message", error_message),
+                ("output_file_path", output_file_path),
+                ("queued_at", queued_at),
+                ("k_file_content", k_file_content),
+                ("work_directory", work_directory),
+                ("gif_path", gif_path),
+                ("d3hsp_path", d3hsp_path),
+                ("error_log_path", error_log_path),
+                ("compute_start_time", compute_start_time),
+                ("compute_end_time", compute_end_time),
+                ("progress", progress),
+            ]
 
-            if end_time is not None:
-                fields.append("end_time = ?")
-                values.append(end_time)
-
-            if error_message is not None:
-                fields.append("error_message = ?")
-                values.append(error_message)
-
-            if output_file_path is not None:
-                fields.append("output_file_path = ?")
-                values.append(output_file_path)
-
-            if queued_at is not None:
-                fields.append("queued_at = ?")
-                values.append(queued_at)
+            for field_name, field_value in optional_fields:
+                if field_value is not None:
+                    fields.append(f"{field_name} = ?")
+                    values.append(field_value)
 
             # 状态变化时重置同步标志
             fields.append("platform_a_synced = 0")
@@ -223,6 +294,98 @@ class Database:
 
             sql = f"UPDATE tasks SET {', '.join(fields)} WHERE task_id = ?"
             cursor.execute(sql, values)
+
+            return cursor.rowcount > 0
+
+    def update_task_progress(self, task_id: str, progress: int) -> bool:
+        """
+        更新任务进度
+
+        Args:
+            task_id: 任务ID
+            progress: 进度百分比 (0-100)
+
+        Returns:
+            是否更新成功
+        """
+        now = datetime.now().isoformat()
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE tasks
+                SET progress = ?, updated_at = ?
+                WHERE task_id = ?
+            """, (progress, now, task_id))
+
+            return cursor.rowcount > 0
+
+    def update_task_result_paths(
+        self,
+        task_id: str,
+        gif_path: Optional[str] = None,
+        d3hsp_path: Optional[str] = None,
+        error_log_path: Optional[str] = None
+    ) -> bool:
+        """
+        更新任务结果文件路径
+
+        Args:
+            task_id: 任务ID
+            gif_path: GIF文件路径
+            d3hsp_path: d3hsp文件路径
+            error_log_path: 错误日志路径
+
+        Returns:
+            是否更新成功
+        """
+        now = datetime.now().isoformat()
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            fields = ["updated_at = ?"]
+            values = [now]
+
+            if gif_path is not None:
+                fields.append("gif_path = ?")
+                values.append(gif_path)
+
+            if d3hsp_path is not None:
+                fields.append("d3hsp_path = ?")
+                values.append(d3hsp_path)
+
+            if error_log_path is not None:
+                fields.append("error_log_path = ?")
+                values.append(error_log_path)
+
+            values.append(task_id)
+
+            sql = f"UPDATE tasks SET {', '.join(fields)} WHERE task_id = ?"
+            cursor.execute(sql, values)
+
+            return cursor.rowcount > 0
+
+    def save_k_file_content(self, task_id: str, k_file_content: str) -> bool:
+        """
+        保存K文件内容
+
+        Args:
+            task_id: 任务ID
+            k_file_content: K文件内容
+
+        Returns:
+            是否保存成功
+        """
+        now = datetime.now().isoformat()
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE tasks
+                SET k_file_content = ?, updated_at = ?
+                WHERE task_id = ?
+            """, (k_file_content, now, task_id))
 
             return cursor.rowcount > 0
 
@@ -349,7 +512,7 @@ class Database:
         根据状态获取任务列表
 
         Args:
-            status: 状态码 (0-待提交, 1-排队中, 2-运行中, 3-已完成, 4-失败, 5-中止)
+            status: 状态码 (参见 TaskStatus 枚举)
             limit: 最大返回数量
 
         Returns:
@@ -363,6 +526,23 @@ class Database:
                 ORDER BY queued_at ASC, updated_at ASC
                 LIMIT ?
             """, (status, limit))
+
+            return [self._row_to_dict(row) for row in cursor.fetchall()]
+
+    def get_running_tasks(self) -> List[Dict[str, Any]]:
+        """
+        获取所有运行中的任务（状态为2、6、7）
+
+        Returns:
+            任务列表
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM tasks
+                WHERE status IN (?, ?, ?)
+                ORDER BY start_time ASC
+            """, (TaskStatus.GENERATING, TaskStatus.COMPUTING, TaskStatus.POSTPROCESSING))
 
             return [self._row_to_dict(row) for row in cursor.fetchall()]
 
@@ -384,5 +564,9 @@ class Database:
 
         # 转换布尔字段
         data['platform_a_synced'] = bool(data.get('platform_a_synced', 0))
+        data['enable_postprocess'] = bool(data.get('enable_postprocess', 0))
+
+        # 添加状态显示名称
+        data['status_name'] = TaskStatus.get_display_name(data.get('status', 0))
 
         return data
