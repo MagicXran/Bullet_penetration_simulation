@@ -1,8 +1,8 @@
 ﻿// LS-DYNA 参数化系统 - 前端脚本
 // 简化版：专注于参数输入和任务提交
 
-// API基础URL
-const API_BASE = 'http://localhost:8000/api';
+// API基础URL - 动态获取，自适应任意 IP:Port 配置
+const API_BASE = `${window.location.origin}/api`;
 
 // 预设配置
 const PRESETS = {
