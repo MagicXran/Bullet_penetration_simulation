@@ -330,7 +330,7 @@ class AnimationGenerateRequest(BaseModel):
     fringe_variable: str = Field(default="stress", description="云图变量: stress, strain, displacement, velocity, acceleration, plastic_strain")
     resolution: List[int] = Field(default=[1920, 1080], description="分辨率 [宽, 高]")
     fps: int = Field(default=30, ge=15, le=60, description="帧率")
-    output_format: str = Field(default="mp4", description="输出格式: mp4, avi")
+    output_format: str = Field(default="gif", description="输出格式: gif (LS-PrePost 4.8仅支持GIF)")
 
     class Config:
         json_schema_extra = {
@@ -340,7 +340,7 @@ class AnimationGenerateRequest(BaseModel):
                 "fringe_variable": "stress",
                 "resolution": [1920, 1080],
                 "fps": 30,
-                "output_format": "mp4"
+                "output_format": "gif"
             }
         }
 
@@ -1434,11 +1434,84 @@ if FRONTEND_DIR.exists():
 
 # ==================== 启动配置 ====================
 
+def parse_args():
+    """解析命令行参数"""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description='LS-DYNA K文件参数化系统 - 子弹穿透仿真',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+使用示例:
+  BulletSim.exe                        # 使用配置文件默认值启动
+  BulletSim.exe --port 9000            # 指定端口
+  BulletSim.exe --host 127.0.0.1       # 仅本机访问
+  BulletSim.exe --host 0.0.0.0 --port 8080  # 指定IP和端口
+
+配置优先级: 命令行参数 > config.json > 硬编码默认值
+        '''
+    )
+
+    parser.add_argument(
+        '--host', '-H',
+        type=str,
+        default=None,
+        metavar='IP',
+        help='服务器监听地址 (默认: 配置文件值或0.0.0.0)'
+    )
+
+    parser.add_argument(
+        '--port', '-p',
+        type=int,
+        default=None,
+        metavar='PORT',
+        help='服务器监听端口 (默认: 配置文件值或8000)'
+    )
+
+    return parser.parse_args()
+
+
+def get_server_config(args) -> tuple:
+    """
+    获取服务器配置（IP和端口）
+
+    优先级: 命令行参数 > config.json > 硬编码默认值
+
+    Returns:
+        tuple: (host, port)
+    """
+    # 硬编码默认值
+    default_host = "0.0.0.0"
+    default_port = 8000
+
+    # 从配置文件读取
+    config = load_config()
+    config_host = config.get("server_host", default_host)
+    config_port = config.get("server_port", default_port)
+
+    # 命令行参数覆盖
+    final_host = args.host if args.host is not None else config_host
+    final_port = args.port if args.port is not None else config_port
+
+    # 端口范围验证
+    if not (1 <= final_port <= 65535):
+        print(f"[WARNING] 端口 {final_port} 超出有效范围(1-65535)，使用默认端口 {default_port}")
+        final_port = default_port
+
+    return final_host, final_port
+
+
 if __name__ == "__main__":
     import uvicorn
 
+    # 解析命令行参数
+    args = parse_args()
+
     frozen = is_frozen()
     mode_text = "打包模式" if frozen else "开发模式"
+
+    # 获取服务器配置
+    host, port = get_server_config(args)
 
     print("="*60)
     print(f"LS-DYNA K文件参数化系统 - 启动中... ({mode_text})")
@@ -1450,25 +1523,30 @@ if __name__ == "__main__":
     print(f"任务目录: {get_tasks_dir()}")
     print(f"配置文件: {get_backend_dir() / 'config.json'}")
     print("="*60)
+    print(f"服务器配置: {host}:{port}")
     print("访问地址:")
-    print("  - Web界面: http://localhost:8000")
-    print("  - API文档: http://localhost:8000/docs")
+    if host == "0.0.0.0":
+        print(f"  - Web界面: http://localhost:{port}")
+        print(f"  - 局域网:  http://<本机IP>:{port}")
+    else:
+        print(f"  - Web界面: http://{host}:{port}")
+    print(f"  - API文档: http://localhost:{port}/docs")
     print("="*60)
 
     if frozen:
         # 打包模式：直接传 app 对象，禁用 reload
         uvicorn.run(
             app,
-            host="0.0.0.0",
-            port=8000,
+            host=host,
+            port=port,
             log_level="info"
         )
     else:
         # 开发模式：使用字符串引用，启用热重载
         uvicorn.run(
             "app:app",
-            host="0.0.0.0",
-            port=8000,
+            host=host,
+            port=port,
             reload=True,
             log_level="info"
         )

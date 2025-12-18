@@ -407,9 +407,8 @@ class LSDynaRunner:
         """
         执行LS-PrePost后处理生成动画
 
-        采用两阶段策略：
-        1. 先用LS-PrePost生成AVI（兼容性最好）
-        2. 如果目标格式是GIF，用系统FFMPEG转换
+        直接使用LS-PrePost生成目标格式（GIF/AVI/MPEG）
+        LS-PrePost 4.8原生支持这些格式，无需中间转换
 
         Returns:
             Optional[str]: 动画文件路径，失败返回None
@@ -418,67 +417,49 @@ class LSDynaRunner:
             return None
 
         try:
+            # 直接使用配置的输出格式（LS-PrePost 4.8支持gif/avi/mpeg）
             target_format = self.prepost_config.output_format.lower()
             d3plot_absolute = os.path.abspath(d3plot_path)
 
-            # 阶段1: 使用LS-PrePost生成AVI（避免GIF编码问题）
-            # LS-PrePost内置FFMPEG对AVI支持最好
-            avi_filename = f"{task_id}_temp.avi"
-            avi_path = os.path.abspath(os.path.join(work_directory, avi_filename))
+            # 输出文件路径（LS-PrePost会自动添加扩展名）
+            output_filename = f"{task_id}.{target_format}"
+            output_path = os.path.abspath(os.path.join(work_directory, output_filename))
             cfile_path = os.path.abspath(os.path.join(work_directory, f"{task_id}_animation.cfile"))
 
-            cfile_content = self._generate_cfile(d3plot_absolute, avi_path, force_format="avi")
+            # 不再使用force_format，尊重配置中的格式
+            cfile_content = self._generate_cfile(d3plot_absolute, output_path)
 
             with open(cfile_path, 'w', encoding='utf-8') as f:
                 f.write(cfile_content)
 
-            # 执行LS-PrePost
+            # 执行LS-PrePost（批处理模式，-nographicscls 确保无GUI自动关闭）
             cmd = [
                 self.prepost_config.executable_path,
-                "c=" + cfile_path
+                "c=" + cfile_path,
+                "-nographics"
             ]
 
             logger.info(f"执行LS-PrePost命令: {' '.join(cmd)}")
+            logger.info(f"目标格式: {target_format.upper()}, 输出路径: {output_path}")
 
             process = subprocess.run(
                 cmd,
                 cwd=work_directory,
                 capture_output=True,
                 text=True,
-                timeout=600  # 10分钟超时（大模型需要更长时间）
+                timeout=600  # 10分钟超时
             )
 
-            # 检查AVI是否生成（即使returncode非0，文件可能已生成）
-            if not os.path.isfile(avi_path):
-                logger.warning(f"LS-PrePost未生成AVI文件，returncode={process.returncode}")
+            # 检查文件是否生成（即使returncode非0，文件可能已生成）
+            if os.path.isfile(output_path):
+                file_size = os.path.getsize(output_path)
+                logger.info(f"后处理完成: {output_path} ({file_size} bytes)")
+                return output_path
+            else:
+                logger.warning(f"LS-PrePost未生成文件，returncode={process.returncode}")
                 if process.stderr:
                     logger.warning(f"stderr: {process.stderr[:500]}")
                 return None
-
-            avi_size = os.path.getsize(avi_path)
-            logger.info(f"LS-PrePost生成AVI成功: {avi_path} ({avi_size} bytes)")
-
-            # 阶段2: 如果目标是GIF，用系统FFMPEG转换
-            if target_format == "gif":
-                final_path = self._convert_avi_to_gif(avi_path, work_directory, task_id)
-                if final_path:
-                    # 删除临时AVI文件
-                    try:
-                        os.remove(avi_path)
-                    except Exception:
-                        pass
-                    return final_path
-                else:
-                    # GIF转换失败，返回AVI作为备选
-                    logger.warning("GIF转换失败，保留AVI文件")
-                    return avi_path
-            elif target_format == "avi":
-                # 直接返回AVI
-                return avi_path
-            else:
-                # 其他格式暂不支持，返回AVI
-                logger.warning(f"不支持的格式 {target_format}，返回AVI")
-                return avi_path
 
         except subprocess.TimeoutExpired:
             logger.error("LS-PrePost执行超时")
@@ -487,114 +468,26 @@ class LSDynaRunner:
             logger.error(f"后处理时出错: {e}")
             return None
 
-    def _convert_avi_to_gif(
-        self,
-        avi_path: str,
-        work_directory: str,
-        task_id: str
-    ) -> Optional[str]:
+    def _generate_cfile(self, d3plot_path: str, output_path: str) -> str:
         """
-        使用系统FFMPEG将AVI转换为GIF
-
-        Args:
-            avi_path: AVI文件路径
-            work_directory: 工作目录
-            task_id: 任务ID
-
-        Returns:
-            Optional[str]: GIF文件路径，失败返回None
-        """
-        try:
-            gif_path = os.path.abspath(os.path.join(work_directory, f"{task_id}.gif"))
-            cfg = self.prepost_config
-
-            # 构建FFMPEG命令
-            # 使用palette生成高质量GIF
-            # -vf "fps=X,scale=W:H:flags=lanczos,palettegen" 生成调色板
-            # 然后用调色板生成GIF
-
-            # 简化版本：直接转换
-            cmd = [
-                "ffmpeg",
-                "-y",  # 覆盖已存在文件
-                "-i", avi_path,
-                "-vf", f"fps={cfg.fps},scale={cfg.resolution[0]}:{cfg.resolution[1]}:flags=lanczos",
-                "-loop", "0",  # 无限循环
-                gif_path
-            ]
-
-            logger.info(f"执行FFMPEG转换: {' '.join(cmd)}")
-
-            process = subprocess.run(
-                cmd,
-                cwd=work_directory,
-                capture_output=True,
-                text=True,
-                timeout=300
-            )
-
-            if os.path.isfile(gif_path):
-                gif_size = os.path.getsize(gif_path)
-                logger.info(f"GIF转换成功: {gif_path} ({gif_size} bytes)")
-                return gif_path
-            else:
-                logger.warning(f"FFMPEG转换失败: {process.stderr[:500] if process.stderr else 'unknown error'}")
-                return None
-
-        except FileNotFoundError:
-            logger.warning("系统未安装FFMPEG，无法转换为GIF。请安装FFMPEG或使用AVI格式。")
-            return None
-        except subprocess.TimeoutExpired:
-            logger.warning("FFMPEG转换超时")
-            return None
-        except Exception as e:
-            logger.warning(f"GIF转换出错: {e}")
-            return None
-
-    def _generate_cfile(self, d3plot_path: str, output_path: str, force_format: str = None) -> str:
-        """
-        生成LS-PrePost cfile脚本
+        生成LS-PrePost cfile脚本（简化版，LS-PrePost 4.8兼容）
 
         Args:
             d3plot_path: d3plot文件路径
-            output_path: 输出文件路径
-            force_format: 强制使用的格式（覆盖配置中的格式）
+            output_path: 输出文件路径（含扩展名，方法内部会处理）
         """
         cfg = self.prepost_config
 
-        # 视角映射
-        view_map = {
-            "isometric": "iso1",
-            "front": "front",
-            "back": "back",
-            "top": "top",
-            "bottom": "bottom",
-            "left": "left",
-            "right": "right"
-        }
-        view_cmd = view_map.get(cfg.view, "iso1")
+        # 输出格式（大写，LS-PrePost 4.8要求）
+        format_ext = cfg.output_format.upper()
 
-        # 云图变量映射
-        fringe_map = {
-            "stress": "Stress",
-            "strain": "Strain",
-            "displacement": "Displacement",
-            "velocity": "Velocity",
-            "acceleration": "Acceleration",
-            "plastic_strain": "Plastic strain"
-        }
-        fringe_var = fringe_map.get(cfg.fringe_variable, "Stress")
+        # 输出路径不含扩展名（LS-PrePost会自动添加）
+        output_path_no_ext = os.path.splitext(output_path)[0]
 
-        # 输出格式（优先使用强制格式）
-        format_ext = force_format if force_format else cfg.output_format.lower()
-
-        cfile = f"""open d3plot "{d3plot_path}"
-view {view_cmd}
-fringe 1
-fcomp 1 "{fringe_var}"
-range auto
+        # 简化的cfile脚本：不设置视角和云图变量，使用LS-PrePost默认值
+        cfile = f"""openc d3plot "{d3plot_path}"
 ac
-movie {format_ext} "{output_path}" {cfg.resolution[0]} {cfg.resolution[1]} {cfg.fps}
+movie {format_ext} {cfg.resolution[0]}x{cfg.resolution[1]} "{output_path_no_ext}" 1 999
 exit
 """
         return cfile

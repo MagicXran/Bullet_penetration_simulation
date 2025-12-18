@@ -145,45 +145,34 @@ function generateTaskId() {
 
 /**
  * 提交计算任务
- * 工作流程：保存参数 → 加入队列 → 跳转结果页
+ * 工作流程：保存参数 → 加入队列 → 立即跳转结果页（结果页显示进度）
  */
 async function submitCalculation() {
     const data = getFormData();
     const submitBtn = document.getElementById('submitBtn');
     const enablePostprocess = document.getElementById('enable_postprocess')?.checked || false;
 
-    // 收集后处理参数（如果启用）
-    let postprocessParams = null;
+    // 后处理使用后端配置文件的默认值，前端不再传递参数
     if (enablePostprocess) {
-        postprocessParams = {
-            resolution: document.getElementById('pp_resolution')?.value || '1920x1080',
-            fps: parseInt(document.getElementById('pp_fps')?.value) || 30,
-            view: document.getElementById('pp_view')?.value || 'isometric',
-            fringe: document.getElementById('pp_fringe')?.value || 'stress',
-            format: document.getElementById('pp_format')?.value || 'gif'
-        };
-        console.log('[提交计算] 后处理参数:', postprocessParams);
+        console.log('[提交计算] 启用后处理（使用后端默认配置）');
     }
 
-    // 显示加载遮罩
-    showLoading(true, '正在提交计算任务...');
+    // 禁用按钮防止重复提交
     if (submitBtn) submitBtn.disabled = true;
 
-    try {
-        // 生成任务ID
-        const taskId = generateTaskId();
-        console.log('[提交计算] 任务ID:', taskId);
+    // 生成任务ID
+    const taskId = generateTaskId();
+    console.log('[提交计算] 任务ID:', taskId);
 
-        // 1. 保存参数
-        showLoading(true, '正在保存参数...');
+    try {
+        // 1. 保存参数（必须等待成功）
         const saveResponse = await fetch(`${API_BASE}/task/save`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 task_id: taskId,
                 params: data,
-                enable_postprocess: enablePostprocess,
-                postprocess_params: postprocessParams
+                enable_postprocess: enablePostprocess
             })
         });
 
@@ -193,32 +182,22 @@ async function submitCalculation() {
         }
         console.log('[提交计算] 参数保存成功');
 
-        // 2. 触发执行（加入队列）
-        showLoading(true, '正在加入执行队列...');
-        const execResponse = await fetch(`${API_BASE}/task/${taskId}/execute`, {
+        // 2. 触发执行（不等待响应，立即跳转）
+        // 使用 fetch 但不 await，让请求在后台发送
+        fetch(`${API_BASE}/task/${taskId}/execute`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
+        }).catch(err => {
+            console.error('[提交计算] 执行请求发送失败:', err);
         });
 
-        if (!execResponse.ok) {
-            const error = await execResponse.json();
-            throw new Error(error.detail || '触发执行失败');
-        }
-        console.log('[提交计算] 任务已加入执行队列');
-
-        // 3. 成功，跳转到结果页
-        showLoading(true, '任务已提交，正在跳转...');
-        showToast('成功', '任务已提交，正在跳转到结果页面...', 'success');
-
-        // 短暂延迟让用户看到提示
-        setTimeout(() => {
-            window.location.href = `output.html?task_id=${taskId}`;
-        }, 500);
+        // 3. 立即跳转到结果页（结果页会轮询状态）
+        console.log('[提交计算] 立即跳转到结果页');
+        window.location.href = `output.html?task_id=${taskId}`;
 
     } catch (error) {
         console.error('[提交计算] 失败:', error);
         showToast('错误', '提交计算失败: ' + error.message, 'error');
-        showLoading(false);
         if (submitBtn) submitBtn.disabled = false;
     }
 }
@@ -253,19 +232,8 @@ document.addEventListener('DOMContentLoaded', function() {
         console.error('[app.js] 错误：找不到 paramForm 元素');
     }
 
-    // 后处理选项切换
-    const enablePostprocess = document.getElementById('enable_postprocess');
-    const postprocessOptions = document.getElementById('postprocessOptions');
-    if (enablePostprocess && postprocessOptions) {
-        enablePostprocess.addEventListener('change', function() {
-            if (this.checked) {
-                postprocessOptions.classList.remove('d-none');
-            } else {
-                postprocessOptions.classList.add('d-none');
-            }
-        });
-        console.log('[app.js] 后处理选项切换绑定成功');
-    }
+    // 后处理选项默认勾选，参数使用后端配置文件默认值
+    // （前端已移除参数面板，无需切换逻辑）
 
     // 输入验证反馈（清除错误状态）
     const inputs = document.querySelectorAll('input[type="number"]');

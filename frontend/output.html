@@ -182,6 +182,121 @@
         .d-none {
             display: none !important;
         }
+
+        /* 执行中占位效果 */
+        .placeholder-loading {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 50%, #f8f9fa 100%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 8px;
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        .placeholder-loading i {
+            font-size: 3rem;
+            color: var(--primary-blue);
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        .placeholder-loading p {
+            color: #6c757d;
+            margin: 0;
+            font-size: 0.9rem;
+        }
+
+        /* 文件准备中效果 */
+        .file-placeholder {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            background: #f8f9fa;
+            border: 1px dashed #dee2e6;
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+
+        .file-placeholder .spinner-border {
+            width: 1rem;
+            height: 1rem;
+        }
+
+        /* 状态时间线效果 */
+        .status-timeline {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background: rgba(255,255,255,0.5);
+            border-radius: 8px;
+        }
+
+        .timeline-step {
+            flex: 1;
+            text-align: center;
+            position: relative;
+        }
+
+        .timeline-step::after {
+            content: '';
+            position: absolute;
+            top: 10px;
+            right: -0.25rem;
+            width: 0.5rem;
+            height: 2px;
+            background: #dee2e6;
+        }
+
+        .timeline-step:last-child::after {
+            display: none;
+        }
+
+        .timeline-step .step-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #dee2e6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 0.25rem;
+            font-size: 0.7rem;
+            color: white;
+        }
+
+        .timeline-step.active .step-icon {
+            background: var(--primary-blue);
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        .timeline-step.completed .step-icon {
+            background: #198754;
+        }
+
+        .timeline-step .step-label {
+            font-size: 0.7rem;
+            color: #6c757d;
+        }
+
+        .timeline-step.active .step-label {
+            color: var(--primary-blue);
+            font-weight: 600;
+        }
+
+        .timeline-step.completed .step-label {
+            color: #198754;
+        }
     </style>
 </head>
 <body>
@@ -218,6 +333,30 @@
                 </div>
                 <small class="text-muted mt-1 d-block" id="progressText">进度: 0%</small>
             </div>
+
+            <!-- 执行时间线 -->
+            <div class="status-timeline d-none" id="statusTimeline">
+                <div class="timeline-step" id="step-queue">
+                    <div class="step-icon"><i class="bi bi-hourglass-split"></i></div>
+                    <div class="step-label">排队</div>
+                </div>
+                <div class="timeline-step" id="step-kfile">
+                    <div class="step-icon"><i class="bi bi-file-code"></i></div>
+                    <div class="step-label">生成K文件</div>
+                </div>
+                <div class="timeline-step" id="step-compute">
+                    <div class="step-icon"><i class="bi bi-cpu"></i></div>
+                    <div class="step-label">LS-DYNA计算</div>
+                </div>
+                <div class="timeline-step" id="step-postprocess">
+                    <div class="step-icon"><i class="bi bi-film"></i></div>
+                    <div class="step-label">后处理</div>
+                </div>
+                <div class="timeline-step" id="step-done">
+                    <div class="step-icon"><i class="bi bi-check-lg"></i></div>
+                    <div class="step-label">完成</div>
+                </div>
+            </div>
         </div>
 
         <!-- 错误信息 -->
@@ -244,12 +383,17 @@
         </div>
 
         <!-- 仿真动画结果 -->
-        <div class="result-card d-none" id="animationCard">
+        <div class="result-card" id="animationCard">
             <h5><i class="bi bi-film"></i> 仿真动画</h5>
             <div class="animation-preview" id="animationPreview">
-                <img id="animationGif" src="" alt="仿真动画">
+                <!-- 默认显示等待占位 -->
+                <div class="placeholder-loading" id="animationPlaceholder">
+                    <i class="bi bi-film"></i>
+                    <p>动画将在计算完成后生成...</p>
+                    <small class="text-muted">如已启用后处理，计算完成后将自动生成仿真动画</small>
+                </div>
             </div>
-            <div class="mt-3 text-center">
+            <div class="mt-3 text-center d-none" id="animationDownloadArea">
                 <button class="btn btn-primary download-btn" onclick="downloadGif()">
                     <i class="bi bi-download"></i> 下载动画
                 </button>
@@ -257,20 +401,36 @@
         </div>
 
         <!-- 结果文件下载 -->
-        <div class="result-card d-none" id="downloadCard">
+        <div class="result-card" id="downloadCard">
             <h5><i class="bi bi-folder2-open"></i> 结果文件</h5>
-            <div class="d-flex flex-wrap gap-2">
-                <button class="btn btn-primary download-btn" onclick="downloadKFile()">
-                    <i class="bi bi-file-code"></i> K文件
-                </button>
-                <button class="btn btn-outline-primary download-btn d-none" id="d3hspBtn" onclick="downloadD3hsp()">
-                    <i class="bi bi-file-text"></i> d3hsp日志
-                </button>
+            <!-- 等待中占位 -->
+            <div id="downloadPlaceholder">
+                <div class="d-flex flex-wrap gap-2">
+                    <div class="file-placeholder">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        <span>K文件 - 待生成</span>
+                    </div>
+                    <div class="file-placeholder">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        <span>d3hsp日志 - 待生成</span>
+                    </div>
+                </div>
             </div>
-            <div class="mt-2">
-                <small class="text-muted">
-                    <i class="bi bi-clock"></i> 完成时间: <span id="completeTime">-</span>
-                </small>
+            <!-- 实际下载按钮 -->
+            <div class="d-none" id="downloadButtons">
+                <div class="d-flex flex-wrap gap-2">
+                    <button class="btn btn-primary download-btn" onclick="downloadKFile()">
+                        <i class="bi bi-file-code"></i> K文件
+                    </button>
+                    <button class="btn btn-outline-primary download-btn d-none" id="d3hspBtn" onclick="downloadD3hsp()">
+                        <i class="bi bi-file-text"></i> d3hsp日志
+                    </button>
+                </div>
+                <div class="mt-2">
+                    <small class="text-muted">
+                        <i class="bi bi-clock"></i> 完成时间: <span id="completeTime">-</span>
+                    </small>
+                </div>
             </div>
         </div>
 
@@ -355,6 +515,16 @@
             const progressBar = document.getElementById('progressBar');
             const progressText = document.getElementById('progressText');
 
+            // 更新时间线
+            updateTimeline(status);
+
+            // 更新占位符状态（执行中状态）
+            const runningStates = [0, 1, 2, 6, 7];
+            if (runningStates.includes(status)) {
+                updateAnimationPlaceholder(status, task.enable_postprocess);
+                updateDownloadPlaceholder(status);
+            }
+
             // 根据状态显示不同内容
             switch (status) {
                 case 0: // 待提交
@@ -429,8 +599,9 @@
 
         // 显示结果
         function showResults(task) {
-            // 显示下载卡片
-            document.getElementById('downloadCard').classList.remove('d-none');
+            // 切换下载区域：隐藏占位符，显示实际按钮
+            document.getElementById('downloadPlaceholder').classList.add('d-none');
+            document.getElementById('downloadButtons').classList.remove('d-none');
             document.getElementById('completeTime').textContent = task.end_time || '-';
 
             // 如果有d3hsp路径，显示下载按钮
@@ -438,13 +609,12 @@
                 document.getElementById('d3hspBtn').classList.remove('d-none');
             }
 
-            // 如果有动画文件路径，显示动画
-            if (task.gif_path) {
-                const animationCard = document.getElementById('animationCard');
-                const animationPreview = document.getElementById('animationPreview');
-                animationCard.classList.remove('d-none');
+            // 处理动画显示区域
+            const animationPreview = document.getElementById('animationPreview');
+            const animationDownloadArea = document.getElementById('animationDownloadArea');
 
-                // 根据文件扩展名决定显示方式
+            if (task.gif_path) {
+                // 有动画文件 - 显示动画
                 const filePath = task.gif_path.toLowerCase();
                 const apiUrl = `${API_BASE}/task/${currentTaskId}/result/gif?t=${Date.now()}`;
 
@@ -476,6 +646,17 @@
                         </div>
                     `;
                 }
+                // 显示下载按钮
+                animationDownloadArea.classList.remove('d-none');
+            } else {
+                // 没有动画文件 - 显示完成提示
+                animationPreview.innerHTML = `
+                    <div class="text-center py-4">
+                        <i class="bi bi-check-circle text-success" style="font-size: 3rem;"></i>
+                        <p class="mt-2 text-muted">计算已完成，未生成动画文件</p>
+                        <small class="text-muted">（如需动画，请在提交时启用后处理选项）</small>
+                    </div>
+                `;
             }
         }
 
@@ -563,6 +744,90 @@
                 clearInterval(pollingInterval);
                 pollingInterval = null;
             }
+        }
+
+        // 更新时间线状态
+        function updateTimeline(currentStatus) {
+            const timeline = document.getElementById('statusTimeline');
+            const steps = {
+                'step-queue': { completedAt: [2, 6, 7, 3], activeAt: [1] },
+                'step-kfile': { completedAt: [6, 7, 3], activeAt: [2] },
+                'step-compute': { completedAt: [7, 3], activeAt: [6] },
+                'step-postprocess': { completedAt: [3], activeAt: [7] },
+                'step-done': { completedAt: [], activeAt: [3] }
+            };
+
+            // 任务执行中时显示时间线
+            const runningStates = [1, 2, 6, 7, 3];
+            if (runningStates.includes(currentStatus)) {
+                timeline.classList.remove('d-none');
+            } else {
+                timeline.classList.add('d-none');
+            }
+
+            // 更新每个步骤的状态
+            for (const [stepId, config] of Object.entries(steps)) {
+                const stepEl = document.getElementById(stepId);
+                stepEl.classList.remove('active', 'completed');
+
+                if (config.completedAt.includes(currentStatus)) {
+                    stepEl.classList.add('completed');
+                } else if (config.activeAt.includes(currentStatus)) {
+                    stepEl.classList.add('active');
+                }
+            }
+        }
+
+        // 更新动画占位符状态
+        function updateAnimationPlaceholder(status, hasPostprocess) {
+            const placeholder = document.getElementById('animationPlaceholder');
+            if (!placeholder) return;
+
+            const messages = {
+                0: { icon: 'bi-film', text: '动画将在计算完成后生成...', sub: '请先提交计算任务' },
+                1: { icon: 'bi-hourglass-split', text: '排队等待中...', sub: '任务将按顺序执行' },
+                2: { icon: 'bi-file-code', text: '正在生成K文件...', sub: '准备计算输入文件' },
+                6: { icon: 'bi-cpu', text: 'LS-DYNA计算进行中...', sub: '这可能需要几分钟，请耐心等待' },
+                7: { icon: 'bi-camera-reels', text: '正在生成仿真动画...', sub: '后处理阶段，即将完成' }
+            };
+
+            const msg = messages[status];
+            if (msg) {
+                placeholder.innerHTML = `
+                    <i class="bi ${msg.icon}"></i>
+                    <p>${msg.text}</p>
+                    <small class="text-muted">${msg.sub}</small>
+                `;
+            }
+        }
+
+        // 更新下载区占位符状态
+        function updateDownloadPlaceholder(status) {
+            const placeholder = document.getElementById('downloadPlaceholder');
+            if (!placeholder) return;
+
+            const statusText = {
+                0: '待提交',
+                1: '排队中',
+                2: '生成中',
+                6: '计算中',
+                7: '后处理中'
+            };
+
+            const text = statusText[status] || '准备中';
+
+            placeholder.innerHTML = `
+                <div class="d-flex flex-wrap gap-2">
+                    <div class="file-placeholder">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        <span>K文件 - ${status >= 2 ? '已生成' : text}</span>
+                    </div>
+                    <div class="file-placeholder">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        <span>d3hsp日志 - ${status >= 6 ? '生成中' : text}</span>
+                    </div>
+                </div>
+            `;
         }
 
         // 下载K文件
