@@ -2,6 +2,8 @@
 // 简化版：专注于参数输入和任务提交
 
 // API基础URL - 动态获取，自适应任意 IP:Port 配置
+// 重要：使用 window.location.origin 自动获取当前访问地址（含端口）
+// 不要手动改成硬编码 IP！浏览器会自动知道服务器地址
 const API_BASE = `${window.location.origin}/api`;
 
 // 预设配置
