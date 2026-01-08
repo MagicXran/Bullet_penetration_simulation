@@ -1535,11 +1535,13 @@ if __name__ == "__main__":
 
     if frozen:
         # 打包模式：直接传 app 对象，禁用 reload
+        # 使用 h11 替代 httptools，避免 C 扩展打包问题
         uvicorn.run(
             app,
             host=host,
             port=port,
-            log_level="info"
+            log_level="info",
+            http="h11"
         )
     else:
         # 开发模式：使用字符串引用，启用热重载
