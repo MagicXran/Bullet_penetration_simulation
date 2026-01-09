@@ -145,6 +145,10 @@ class Database:
                 ("compute_start_time", "TEXT"),       # 计算开始时间
                 ("compute_end_time", "TEXT"),         # 计算结束时间
                 ("progress", "INTEGER DEFAULT 0"),    # 进度百分比 (0-100)
+                # 平台交互新增字段
+                ("platform_api_url", "TEXT"),         # 平台API地址（有值=平台任务）
+                ("callback_url", "TEXT"),             # App回调URL（供平台触发执行）
+                ("heartbeat_counter", "INTEGER DEFAULT 0"),  # 心跳计数器 (1-30000循环)
             ]
 
             for col_name, col_type in new_columns:
@@ -164,7 +168,9 @@ class Database:
         task_id: str,
         input_params: Dict[str, Any],
         source: str = 'standalone',
-        enable_postprocess: bool = False
+        enable_postprocess: bool = False,
+        platform_api_url: Optional[str] = None,
+        callback_url: Optional[str] = None
     ) -> bool:
         """
         创建新任务
@@ -172,8 +178,10 @@ class Database:
         Args:
             task_id: 任务ID
             input_params: 输入参数字典
-            source: 任务来源 ('standalone' | 'platform_a')
+            source: 任务来源 ('standalone' | 'platform')
             enable_postprocess: 是否启用后处理
+            platform_api_url: 平台API地址（有值表示平台任务）
+            callback_url: App回调URL（供平台触发执行）
 
         Returns:
             是否创建成功
@@ -186,10 +194,12 @@ class Database:
                 cursor.execute("""
                     INSERT INTO tasks (
                         task_id, source, input_params, status,
-                        enable_postprocess, created_at, updated_at
-                    ) VALUES (?, ?, ?, 0, ?, ?, ?)
+                        enable_postprocess, platform_api_url, callback_url,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?)
                 """, (task_id, source, json.dumps(input_params),
-                      1 if enable_postprocess else 0, now, now))
+                      1 if enable_postprocess else 0,
+                      platform_api_url, callback_url, now, now))
                 return True
             except sqlite3.IntegrityError:
                 # task_id已存在
@@ -570,3 +580,66 @@ class Database:
         data['status_name'] = TaskStatus.get_display_name(data.get('status', 0))
 
         return data
+
+    # ==================== 平台交互相关方法 ====================
+
+    def update_heartbeat_counter(self, task_id: str, counter: int) -> bool:
+        """
+        更新任务的心跳计数器
+
+        Args:
+            task_id: 任务ID
+            counter: 心跳计数器值 (1-30000循环)
+
+        Returns:
+            是否更新成功
+        """
+        now = datetime.now().isoformat()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE tasks SET heartbeat_counter = ?, updated_at = ?
+                WHERE task_id = ?
+            """, (counter, now, task_id))
+            return cursor.rowcount > 0
+
+    def get_platform_tasks(self, status: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        获取所有平台任务（platform_api_url不为空的任务）
+
+        Args:
+            status: 可选的状态过滤
+
+        Returns:
+            平台任务列表
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            if status is not None:
+                cursor.execute("""
+                    SELECT * FROM tasks
+                    WHERE platform_api_url IS NOT NULL
+                      AND status = ?
+                    ORDER BY created_at DESC
+                """, (status,))
+            else:
+                cursor.execute("""
+                    SELECT * FROM tasks
+                    WHERE platform_api_url IS NOT NULL
+                    ORDER BY created_at DESC
+                """)
+            return [self._row_to_dict(row) for row in cursor.fetchall()]
+
+    def is_platform_task(self, task_id: str) -> bool:
+        """
+        判断任务是否为平台任务
+
+        Args:
+            task_id: 任务ID
+
+        Returns:
+            是否为平台任务
+        """
+        task = self.get_task(task_id)
+        return task is not None and task.get('platform_api_url') is not None
+
