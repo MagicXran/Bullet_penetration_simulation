@@ -81,8 +81,7 @@ from k_engine import KFileEngine
 from animation_generator import AnimationGenerator
 from animation_config import AnimationConfig, AnimationTask
 from task_manager import TaskManager
-from platform_sync import PlatformSyncClient
-from task_sync_scheduler import TaskSyncScheduler
+# [已删除] from task_sync_scheduler import TaskSyncScheduler - 轮询模式已废弃
 from task_queue import init_task_queue, shutdown_task_queue, get_task_queue
 from database import TaskStatus
 
@@ -101,20 +100,13 @@ def load_config() -> dict:
 async def lifespan(app: FastAPI):
     """应用生命周期管理器（替换on_event）"""
     # Startup
-    global task_sync_scheduler
     print("[INFO] 应用启动中...")
 
     # 加载配置
     config = load_config()
     print(f"[INFO] 配置加载完成: {len(config)} 项配置")
 
-    # 启动任务同步调度器
-    try:
-        task_sync_scheduler = TaskSyncScheduler()
-        task_sync_scheduler.start()
-    except Exception as e:
-        print(f"[WARNING] 任务同步调度器启动失败: {e}")
-        print("[WARNING] 平台A集成功能将不可用")
+    # [已删除] 任务同步调度器 - 轮询模式已废弃，将用事件驱动替代
 
     # 启动任务执行队列
     try:
@@ -137,8 +129,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     print("[INFO] 应用关闭中...")
-    if task_sync_scheduler:
-        task_sync_scheduler.shutdown()
+    # [已删除] task_sync_scheduler.shutdown() - 轮询模式已废弃
     shutdown_task_queue()
     print("[INFO] 应用已关闭")
 
@@ -180,9 +171,9 @@ def get_tasks_dir() -> Path:
 # 初始化动画生成器（延迟初始化，避免配置文件不存在时启动失败）
 animation_generator: Optional[AnimationGenerator] = None
 
-# 初始化任务管理器和调度器
+# 初始化任务管理器
 task_manager: Optional[TaskManager] = None
-task_sync_scheduler: Optional[TaskSyncScheduler] = None
+# [已删除] task_sync_scheduler - 轮询模式已废弃
 
 def get_task_manager() -> TaskManager:
     """获取任务管理器实例（单例模式）"""
@@ -438,119 +429,9 @@ async def validate_parameters(params: SimulationParameters):
     }
 
 
-@app.post("/api/generate", response_model=GenerationResult)
-async def generate_k_file(params: SimulationParameters):
-    """
-    生成K文件（独立模式）
 
-    创建独立任务并生成K文件，任务会被保存到数据库但不会同步到平台A
-
-    Args:
-        params: 仿真参数
-
-    Returns:
-        生成结果，包含文件路径和元数据
-    """
-    try:
-        tm = get_task_manager()
-
-        # 生成独立任务ID
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        task_id = f"standalone_{timestamp}_{uuid4().hex[:8]}"
-
-        # 1. 验证参数
-        param_dict = {
-            "velocity_z": params.velocity_z,
-            "bullet_yield_stress": params.bullet_yield_stress,
-            "target_yield_stress": params.target_yield_stress,
-            "friction_static": params.friction_static,
-            "friction_dynamic": params.friction_dynamic,
-            "simulation_endtime": params.simulation_endtime
-        }
-
-        is_valid, errors = ParameterValidator.validate_parameter_set(param_dict)
-        if not is_valid:
-            # 只有严重错误才阻止生成（排除警告和提示）
-            critical_errors = [e for e in errors if "警告" not in e and "提示" not in e]
-            if critical_errors:
-                raise HTTPException(status_code=400, detail={
-                    "message": "参数验证失败",
-                    "errors": critical_errors
-                })
-
-        # 2. 提交独立任务（source='standalone'）
-        task = tm.submit_task(task_id, param_dict, source='standalone')
-
-        # 3. 创建模板引擎
-        template_path = TEMPLATE_DIR / "1.k"
-        if not template_path.exists():
-            tm.fail_task(task_id, f"模板文件不存在: {template_path}")
-            raise HTTPException(status_code=500, detail=f"模板文件不存在: {template_path}")
-
-        engine = KFileEngine(str(template_path))
-
-        # 4. 开始任务
-        tm.start_task(task_id)
-
-        # 5. 替换参数（可能有些参数会被跳过）
-        replace_results = engine.replace_multiple_parameters(param_dict)
-
-        # 收集警告信息
-        warnings = []
-        if replace_results["skipped"]:
-            for skipped in replace_results["skipped"]:
-                warnings.append(
-                    f"参数 '{skipped['param_name']}' 无法自动定位，已保持默认值。"
-                    f"原因: {skipped.get('reason', 'unknown')}"
-                )
-
-        # 6. 生成文件名（使用任务目录结构）
-        task_dir = get_tasks_dir() / task_id
-        task_dir.mkdir(parents=True, exist_ok=True)
-
-        summary = engine.get_parameter_summary()
-        filename = f"bullet_sim_{task_id}_{summary}.k"
-        output_path = task_dir / filename
-
-        # 7. 生成K文件
-        engine.generate(str(output_path), metadata={
-            "task_id": task_id,
-            "source": "standalone",
-            "user_params": param_dict,
-            "validation_errors": errors
-        })
-
-        # 8. 标记任务完成
-        tm.complete_task(task_id, str(output_path))
-
-        # 9. 返回结果
-        success_msg = f"成功生成K文件: {filename}"
-        if warnings:
-            success_msg += f" (注意: {len(warnings)} 个参数被跳过)"
-
-        return GenerationResult(
-            success=True,
-            task_id=task_id,  # 返回独立任务ID
-            filename=filename,
-            file_path=str(output_path),
-            metadata_path=str(output_path).replace('.k', '_metadata.json'),
-            timestamp=timestamp,
-            parameters=param_dict,
-            message=success_msg,
-            warnings=warnings
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        # 记录失败状态
-        try:
-            if 'task_id' in locals():
-                tm = get_task_manager()
-                tm.fail_task(task_id, str(e))
-        except:
-            pass
-        raise HTTPException(status_code=500, detail=f"生成K文件失败: {str(e)}")
+# [已删除] /api/generate 端点 - 死代码，从未被前端调用
+# 独立模式使用 /api/task/save + /api/task/{id}/execute 流程
 
 
 @app.get("/api/files")
@@ -1138,119 +1019,8 @@ async def download_task_k_file(task_id: str):
         raise HTTPException(status_code=500, detail=f"下载K文件失败: {str(e)}")
 
 
-@app.post("/api/task/submit")
-async def submit_task(request: TaskSubmitRequest):
-    """
-    提交任务（平台A集成入口）
 
-    工作流程：
-    1. 验证task_id
-    2. 创建/更新任务记录
-    3. 调用平台A的task-insert接口
-    4. 生成K文件
-    5. 更新任务状态并同步平台A
-
-    Args:
-        request: 任务提交请求（包含task_id和params）
-
-    Returns:
-        任务执行结果
-    """
-    task_id = request.task_id
-    params = request.params
-
-    # 验证task_id
-    if not TaskManager.validate_task_id(task_id):
-        raise HTTPException(status_code=400, detail=f"无效的task_id格式: {task_id}")
-
-    try:
-        tm = get_task_manager()
-
-        # 参数字典
-        param_dict = {
-            "velocity_z": params.velocity_z,
-            "bullet_yield_stress": params.bullet_yield_stress,
-            "target_yield_stress": params.target_yield_stress,
-            "friction_static": params.friction_static,
-            "friction_dynamic": params.friction_dynamic,
-            "simulation_endtime": params.simulation_endtime
-        }
-
-        # 1. 提交任务（记录submission_time，source='platform_a'）
-        task = tm.submit_task(task_id, param_dict, source='platform_a')
-
-        # 2. 验证参数
-        is_valid, errors = ParameterValidator.validate_parameter_set(param_dict)
-        if not is_valid:
-            critical_errors = [e for e in errors if "警告" not in e and "提示" not in e]
-            if critical_errors:
-                tm.fail_task(task_id, f"参数验证失败: {'; '.join(critical_errors)}")
-                raise HTTPException(status_code=400, detail={
-                    "message": "参数验证失败",
-                    "errors": critical_errors
-                })
-
-        # 3. 开始生成K文件
-        tm.start_task(task_id)
-
-        template_path = TEMPLATE_DIR / "1.k"
-        if not template_path.exists():
-            tm.fail_task(task_id, f"模板文件不存在: {template_path}")
-            raise HTTPException(status_code=500, detail=f"模板文件不存在: {template_path}")
-
-        engine = KFileEngine(str(template_path))
-        replace_results = engine.replace_multiple_parameters(param_dict)
-
-        # 收集警告
-        warnings = []
-        if replace_results["skipped"]:
-            for skipped in replace_results["skipped"]:
-                warnings.append(
-                    f"参数 '{skipped['param_name']}' 无法自动定位，已保持默认值。"
-                )
-
-        # 4. 生成K文件（在任务专属目录中）
-        task_dir = get_tasks_dir() / task_id
-        task_dir.mkdir(parents=True, exist_ok=True)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        summary = engine.get_parameter_summary()
-        filename = f"bullet_sim_{task_id}_{timestamp}_{summary}.k"
-        output_path = task_dir / filename
-
-        engine.generate(str(output_path), metadata={
-            "task_id": task_id,
-            "user_params": param_dict,
-            "validation_errors": errors
-        })
-
-        # 5. 标记任务完成
-        tm.complete_task(task_id, str(output_path))
-
-        success_msg = f"任务 {task_id} 执行成功，K文件已生成: {filename}"
-        if warnings:
-            success_msg += f" (注意: {len(warnings)} 个参数被跳过)"
-
-        return {
-            "success": True,
-            "task_id": task_id,
-            "filename": filename,
-            "file_path": str(output_path),
-            "message": success_msg,
-            "warnings": warnings,
-            "status": TaskManager.STATUS_COMPLETED
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        # 记录失败状态
-        try:
-            tm = get_task_manager()
-            tm.fail_task(task_id, str(e))
-        except:
-            pass
-        raise HTTPException(status_code=500, detail=f"任务执行失败: {str(e)}")
+# [已删除] /api/task/submit 端点 - 死代码，从未被前端调用
 
 
 # ==================== 动画生成API端点 ====================

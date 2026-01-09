@@ -46,72 +46,8 @@ class PlatformSyncClient:
         if not self.base_url:
             raise ValueError("平台A的base_url配置不能为空")
 
-    def insert_task(
-        self,
-        task_id: str,
-        submission_time: Optional[str] = None,
-        task_status: int = 0
-    ) -> Tuple[bool, Optional[str]]:
-        """
-        向平台A插入任务
 
-        Args:
-            task_id: 任务ID
-            submission_time: 提交时间（ISO格式字符串）
-            task_status: 任务状态（默认0-待提交）
-
-        Returns:
-            (是否成功, 错误信息)
-        """
-        url = f"{self.base_url}{self.task_insert_endpoint}"
-
-        if submission_time is None:
-            submission_time = datetime.now().isoformat()
-
-        payload = {
-            "task_id": task_id,
-            "submission_time": submission_time,
-            "task_status": task_status
-        }
-
-        try:
-            logger.info(f"向平台A插入任务: {task_id}, URL: {url}")
-            response = requests.post(
-                url,
-                json=payload,
-                timeout=self.timeout,
-                headers={'Content-Type': 'application/json'}
-            )
-
-            # 检查响应
-            if response.status_code == 200:
-                result = response.json()
-                if result.get('code') == 0:
-                    logger.info(f"任务 {task_id} 插入成功: {result.get('msg')}")
-                    return True, None
-                else:
-                    error_msg = f"平台A返回错误: code={result.get('code')}, msg={result.get('msg')}"
-                    logger.error(error_msg)
-                    return False, error_msg
-            else:
-                error_msg = f"HTTP错误: {response.status_code}, {response.text}"
-                logger.error(error_msg)
-                return False, error_msg
-
-        except requests.exceptions.Timeout:
-            error_msg = f"请求超时（{self.timeout}秒）"
-            logger.error(f"任务 {task_id} 插入失败: {error_msg}")
-            return False, error_msg
-
-        except requests.exceptions.RequestException as e:
-            error_msg = f"网络请求失败: {str(e)}"
-            logger.error(f"任务 {task_id} 插入失败: {error_msg}")
-            return False, error_msg
-
-        except Exception as e:
-            error_msg = f"未知错误: {str(e)}"
-            logger.error(f"任务 {task_id} 插入失败: {error_msg}")
-            return False, error_msg
+    # [已删除] insert_task() 方法 - 死代码，触发条件几乎不可能满足
 
     def update_task(
         self,
@@ -187,8 +123,8 @@ class PlatformSyncClient:
         """
         根据任务当前状态同步到平台A
 
-        如果是待提交状态且没有submission_time，调用insert_task
-        否则调用update_task
+        [注意] 此方法为旧轮询模式遗留，新版本使用事件驱动
+        统一调用update_task
 
         Args:
             task: 任务字典（来自数据库）
@@ -198,20 +134,15 @@ class PlatformSyncClient:
         """
         task_id = task['task_id']
         status = task['status']
-        submission_time = task.get('submission_time')
         start_time = task.get('start_time')
         end_time = task.get('end_time')
         error_message = task.get('error_message')
 
-        # 如果是待提交且没有submission_time，调用insert
-        if status == 0 and not submission_time:
-            return self.insert_task(task_id, submission_time, status)
-        else:
-            # 否则调用update
-            return self.update_task(
-                task_id,
-                status,
-                start_time,
-                end_time,
-                error_message
-            )
+        # 统一调用update（insert_task已删除）
+        return self.update_task(
+            task_id,
+            status,
+            start_time,
+            end_time,
+            error_message
+        )

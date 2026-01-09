@@ -153,22 +153,8 @@ class TaskManager:
             queued_at=queued_at
         )
 
-    def start_task(self, task_id: str) -> bool:
-        """
-        开始执行任务
 
-        Args:
-            task_id: 任务ID
-
-        Returns:
-            是否更新成功
-        """
-        start_time = datetime.now().isoformat()
-        return self.db.update_task_status(
-            task_id,
-            self.STATUS_RUNNING,
-            start_time=start_time
-        )
+    # [已删除] start_task() 方法 - 引用不存在的 STATUS_RUNNING 常量
 
     def complete_task(
         self,
