@@ -51,8 +51,10 @@ class TaskManager:
         self,
         task_id: str,
         input_params: Optional[Dict[str, Any]] = None,
-        source: str = 'platform_a',
-        enable_postprocess: bool = False
+        source: str = 'standalone',
+        enable_postprocess: bool = False,
+        platform_api_url: Optional[str] = None,
+        callback_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         创建任务或获取已存在的任务
@@ -64,8 +66,10 @@ class TaskManager:
         Args:
             task_id: 任务ID
             input_params: 输入参数（新建任务时必需）
-            source: 任务来源 ('standalone' | 'platform_a')
+            source: 任务来源 ('standalone' | 'platform')
             enable_postprocess: 是否启用后处理
+            platform_api_url: 平台API地址（有值=平台任务）
+            callback_url: App回调URL
 
         Returns:
             任务字典
@@ -84,8 +88,15 @@ class TaskManager:
                 f"任务 {task_id} 不存在，且未提供input_params参数，无法创建新任务"
             )
 
-        # 创建新任务
-        success = self.db.create_task(task_id, input_params, source=source, enable_postprocess=enable_postprocess)
+        # 创建新任务（支持平台参数）
+        success = self.db.create_task(
+            task_id,
+            input_params,
+            source=source,
+            enable_postprocess=enable_postprocess,
+            platform_api_url=platform_api_url,
+            callback_url=callback_url
+        )
         if not success:
             # 理论上不会到这里（因为前面已经查过），但保险起见再查一次
             return self.db.get_task(task_id)
@@ -109,8 +120,10 @@ class TaskManager:
         self,
         task_id: str,
         input_params: Dict[str, Any],
-        source: str = 'platform_a',
-        enable_postprocess: bool = False
+        source: str = 'standalone',
+        enable_postprocess: bool = False,
+        platform_api_url: Optional[str] = None,
+        callback_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         提交任务（用户点击"提交计算"按钮时调用）
@@ -118,14 +131,23 @@ class TaskManager:
         Args:
             task_id: 任务ID
             input_params: 输入参数
-            source: 任务来源 ('standalone' | 'platform_a')
+            source: 任务来源 ('standalone' | 'platform')
             enable_postprocess: 是否启用后处理
+            platform_api_url: 平台API地址（有值=平台任务）
+            callback_url: App回调URL
 
         Returns:
             更新后的任务字典
         """
         # 确保任务存在
-        task = self.create_or_get_task(task_id, input_params, source=source, enable_postprocess=enable_postprocess)
+        task = self.create_or_get_task(
+            task_id,
+            input_params,
+            source=source,
+            enable_postprocess=enable_postprocess,
+            platform_api_url=platform_api_url,
+            callback_url=callback_url
+        )
 
         # 记录提交时间
         submission_time = datetime.now().isoformat()

@@ -27,6 +27,16 @@ from pathlib import Path
 
 from database import TaskStatus
 
+# 平台交互模块（延迟导入，避免循环依赖）
+def _get_platform_modules():
+    """获取平台交互模块（延迟导入）"""
+    try:
+        from platform_notifier import PlatformNotifier
+        from heartbeat_manager import get_heartbeat_manager
+        return PlatformNotifier, get_heartbeat_manager
+    except ImportError:
+        return None, None
+
 logger = logging.getLogger(__name__)
 
 
@@ -393,6 +403,8 @@ class TaskQueue:
                 progress=100
             )
 
+            # 通知平台任务完成
+            self._notify_platform_task_end(task_id, success=True, message="任务完成")
             logger.info(f"[TaskQueue] 任务完成: {task_id}")
 
         except Exception as e:
@@ -507,6 +519,7 @@ class TaskQueue:
     def _handle_abort(self, task_id: str):
         """处理任务中止"""
         self.tm.abort_task(task_id)
+        self._notify_platform_task_end(task_id, success=False, message="任务被中止")
         logger.info(f"[TaskQueue] 任务被中止: {task_id}")
 
     def _handle_failure(self, task_id: str, error_msg: str, lsdyna_result, task_dir: Path):
@@ -524,7 +537,54 @@ class TaskQueue:
             error_log_path=error_log_path
         )
 
+        self._notify_platform_task_end(task_id, success=False, message=error_msg)
         logger.error(f"[TaskQueue] 任务失败: {task_id} - {error_msg}")
+
+    def _notify_platform_task_end(self, task_id: str, success: bool, message: str = ""):
+        """
+        通知平台任务结束并停止心跳
+
+        仅对平台任务生效（platform_api_url不为空）
+
+        Args:
+            task_id: 任务ID
+            success: 是否成功
+            message: 附加消息
+        """
+        try:
+            # 获取任务信息
+            task = self.tm.get_task(task_id)
+            if not task:
+                return
+
+            platform_api_url = task.get('platform_api_url')
+            if not platform_api_url:
+                # 非平台任务，无需通知
+                return
+
+            # 获取平台模块
+            PlatformNotifier, get_heartbeat_manager = _get_platform_modules()
+            if PlatformNotifier is None:
+                logger.warning("[TaskQueue] 平台模块不可用，跳过通知")
+                return
+
+            # 停止心跳
+            heartbeat_mgr = get_heartbeat_manager()
+            heartbeat_mgr.stop_heartbeat(task_id)
+
+            # 通知平台
+            # 构建配置（从任务中获取platform_api_url）
+            notifier = PlatformNotifier({
+                'enabled': True,
+                'platform_api_url': platform_api_url,
+                'request_timeout_seconds': 10
+            })
+            notifier.notify_completion(task_id, success, message)
+
+            logger.info(f"[TaskQueue] 平台通知已发送: {task_id} (success={success})")
+
+        except Exception as e:
+            logger.error(f"[TaskQueue] 平台通知失败: {task_id} - {e}")
 
 
 # 全局单例

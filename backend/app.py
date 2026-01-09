@@ -81,9 +81,13 @@ from k_engine import KFileEngine
 from animation_generator import AnimationGenerator
 from animation_config import AnimationConfig, AnimationTask
 from task_manager import TaskManager
-# [已删除] from task_sync_scheduler import TaskSyncScheduler - 轮询模式已废弃
 from task_queue import init_task_queue, shutdown_task_queue, get_task_queue
-from database import TaskStatus
+from database import TaskStatus, Database
+# 平台交互模块
+from platform_notifier import PlatformNotifier
+from heartbeat_manager import (
+    get_heartbeat_manager, init_heartbeat_manager, shutdown_heartbeat_manager
+)
 
 # ==================== 应用生命周期管理 ====================
 
@@ -106,7 +110,16 @@ async def lifespan(app: FastAPI):
     config = load_config()
     print(f"[INFO] 配置加载完成: {len(config)} 项配置")
 
-    # [已删除] 任务同步调度器 - 轮询模式已废弃，将用事件驱动替代
+    # 初始化平台交互模块
+    platform_config = config.get('platform_integration', {})
+    try:
+        notifier = PlatformNotifier(platform_config)
+        db = Database()  # 获取数据库实例
+        heartbeat_interval = platform_config.get('heartbeat_interval_seconds', 30)
+        init_heartbeat_manager(notifier, db, heartbeat_interval)
+        print("[INFO] 平台交互模块初始化成功")
+    except Exception as e:
+        print(f"[WARNING] 平台交互模块初始化失败: {e}")
 
     # 启动任务执行队列
     try:
@@ -129,7 +142,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     print("[INFO] 应用关闭中...")
-    # [已删除] task_sync_scheduler.shutdown() - 轮询模式已废弃
+    shutdown_heartbeat_manager()  # 停止所有心跳线程
     shutdown_task_queue()
     print("[INFO] 应用已关闭")
 
@@ -286,9 +299,12 @@ class TaskSubmitRequest(BaseModel):
 
 class TaskSaveRequest(BaseModel):
     """任务保存请求模型（方案2：平台触发执行模式）"""
-    task_id: str = Field(..., min_length=8, max_length=128, description="任务ID（平台A生成的UUID）")
+    task_id: str = Field(..., min_length=8, max_length=128, description="任务ID（平台生成的UUID）")
     params: SimulationParameters = Field(..., description="仿真参数")
     enable_postprocess: bool = Field(default=False, description="是否启用后处理（生成GIF动画）")
+    # 平台交互可选参数（有值表示平台任务）
+    platform_api_url: Optional[str] = Field(default=None, description="平台API地址（有值=平台任务）")
+    callback_url: Optional[str] = Field(default=None, description="App回调URL（供平台触发执行）")
 
     class Config:
         json_schema_extra = {
@@ -633,15 +649,25 @@ async def save_task(request: TaskSaveRequest):
                 })
 
         # 保存任务（状态为0-待执行）
-        task = tm.submit_task(task_id, param_dict, source='platform_a', enable_postprocess=request.enable_postprocess)
+        # 如果有platform_api_url，标记为平台任务
+        source = 'platform' if request.platform_api_url else 'standalone'
+        task = tm.submit_task(
+            task_id,
+            param_dict,
+            source=source,
+            enable_postprocess=request.enable_postprocess,
+            platform_api_url=request.platform_api_url,
+            callback_url=request.callback_url
+        )
 
         return {
             "success": True,
             "task_id": task_id,
             "status": 0,
             "status_name": "待执行",
+            "source": source,
             "enable_postprocess": request.enable_postprocess,
-            "message": "参数已保存，等待平台触发执行",
+            "message": "参数已保存，等待平台触发执行" if source == 'platform' else "参数已保存",
             "created_at": task.get('created_at')
         }
 
@@ -649,6 +675,113 @@ async def save_task(request: TaskSaveRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"保存任务失败: {str(e)}")
+
+
+# ==================== 平台回调端点 ====================
+
+class PlatformCallbackRequest(BaseModel):
+    """平台回调请求模型"""
+    task_id: str = Field(..., description="任务ID")
+
+
+@app.post("/api/platform/callback")
+async def receive_platform_callback(request: PlatformCallbackRequest):
+    """
+    接收平台触发执行回调
+
+    平台通过此接口触发App执行任务
+
+    响应码：
+    - code=2000: 成功接受
+    - code=4001: 并发已满（许可证不足）
+    - code=4003: 参数错误（任务不存在）
+    - code=5000: 服务器错误
+
+    Args:
+        request: 回调请求（包含task_id）
+
+    Returns:
+        响应结果
+    """
+    task_id = request.task_id
+
+    try:
+        tm = get_task_manager()
+
+        # 1. 验证任务存在
+        task = tm.get_task(task_id)
+        if not task:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "code": 4003,
+                    "message": f"任务不存在: {task_id}"
+                }
+            )
+
+        # 2. 检查任务状态
+        status = task['status']
+        if status >= 3:  # 已完成/已失败/已中止
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "code": 2000,
+                    "message": f"任务已结束，状态: {TaskManager.get_status_name(status)}"
+                }
+            )
+
+        if status >= 1:  # 已在队列中或执行中
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "code": 2000,
+                    "message": f"任务已在执行，状态: {TaskManager.get_status_name(status)}"
+                }
+            )
+
+        # 3. 检查并发（许可证限制）
+        config = load_config()
+        platform_config = config.get('platform_integration', {})
+        max_concurrent = platform_config.get('max_concurrent_tasks', 2)
+
+        task_queue = get_task_queue()
+        running_count = task_queue.get_running_count() if task_queue else 0
+
+        if running_count >= max_concurrent:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "code": 4001,
+                    "message": f"商业软件许可证已满({running_count}/{max_concurrent})，无法执行"
+                }
+            )
+
+        # 4. 加入执行队列
+        if task_queue:
+            task_queue.enqueue(task_id)
+
+        # 5. 启动心跳（仅平台任务）
+        if task.get('platform_api_url'):
+            heartbeat_mgr = get_heartbeat_manager()
+            heartbeat_mgr.start_heartbeat(task_id)
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "code": 2000,
+                "message": "任务已开始执行"
+            }
+        )
+
+    except Exception as e:
+        print(f"[ERROR] 平台回调处理失败: {e}")
+        return JSONResponse(
+            status_code=200,
+            content={
+                "code": 5000,
+                "message": f"服务器错误: {str(e)}"
+            }
+        )
 
 
 @app.post("/api/task/{task_id}/execute")
