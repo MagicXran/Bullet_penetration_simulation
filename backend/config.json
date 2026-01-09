@@ -5,17 +5,17 @@
   "server_host": "0.0.0.0",
   "server_port": 8000,
 
-  "lsdyna_executable": "C:\\Program Files\\LSTC\\LS-DYNA\\ls-dyna_smp_s_R13.exe",
+  "lsdyna_executable": "E:/ansys22r2/ANSYS Inc/v222/ansys/bin/winx64/lsdyna_dp.exe",
   "lsdyna_cpu_count": 1,
   "lsdyna_timeout_minutes": 99999999,
 
-  "lsprepost_executable": "C:\\Program Files\\LSTC\\LS-PrePost 4.9\\lsprepost4.9_x64.exe",
+  "lsprepost_executable": "E:\\ansys22r2\\ANSYS Inc\\v222\\ansys\\bin\\winx64\\lsprepost48\\lsprepost4.8_x64.exe",
 
   "tasks_base_dir": "tasks",
 
   "default_resolution": [1920, 1080],
   "default_fps": 30,
-  "default_view": "isometric",
+  "default_view": "front",
   "default_fringe_variable": "stress",
   "animation_output_format": "gif",
 
