@@ -1,0 +1,41 @@
+$# LS-PrePost 4.8 GIF Animation Script
+$# Tested on: LS-PrePost 4.8 x64
+c LS-PrePost 4.8 GIF Animation Script
+c Tested on: LS-PrePost 4.8 x64
+c 1) 打开 d3plot
+c 注意：cfile 里路径一般写成单反斜杠 G:\test1\d3plot
+
+$# 1) 打开 d3plot
+$#   注意：cfile 里路径一般写成单反斜杠 G:\test1\d3plot
+openc d3plot "G:\test1\d3plot" nodialog
+
+c 2) 显示所有部件（可选）
+pall
+
+c 3) 设置视角方向
+c 这里示例：顶视图，如果想用前视图/右视图等，只改下一行命令即可：
+c 可选命令：front / back / left / right / top / bottom
+left
+
+c 设置彩虹色云图调色板
+palette rainbow
+
+c 切换到彩色着色模式，而不是线框
+shad
+
+c 4) 自动居中缩放（官方命令 ac）
+ac
+
+c 5) 设置 fringe 变量
+c 这里示例：fringe 1 1（和你之前脚本里“有效应力”用法一致）
+c fringe 1 1
+
+c 打开图例和坐标轴（可选）
+showlegend 1
+showtriad 1
+
+movie GIF 1746x906 "G:\test1\movie_001" 1 30
+
+exit
+
+

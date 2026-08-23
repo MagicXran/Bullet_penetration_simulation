@@ -1,0 +1,17 @@
+.venv/
+venv/
+dist/
+generated/
+tasks/
+mem/
+__pycache__/
+.vs/
+*.db
+*.log
+.env*
+*.pem
+*.key
+*.pfx
+*.p12
+*.rdp
+nul

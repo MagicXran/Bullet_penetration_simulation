@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "LS-DYNA 子弹穿透仿真系统配置文件",
+
+  "server_host": "0.0.0.0",
+  "server_port": 8000,
+
+  "lsdyna_executable": "E:/ansys22r2/ANSYS Inc/v222/ansys/bin/winx64/lsdyna_dp.exe",
+  "lsdyna_cpu_count": 1,
+  "lsdyna_timeout_minutes": 99999999,
+
+  "lsprepost_executable": "E:\\ansys22r2\\ANSYS Inc\\v222\\ansys\\bin\\winx64\\lsprepost48\\lsprepost4.8_x64.exe",
+
+  "tasks_base_dir": "tasks",
+
+  "default_resolution": [1920, 1080],
+  "default_fps": 30,
+  "default_view": "front",
+  "default_fringe_variable": "stress",
+  "animation_output_format": "gif",
+
+  "platform_integration": {
+    "enabled": false,
+    "platform_api_url": "http://platform.company.com/api",
+    "callback_base_url": "http://192.168.1.100:8000",
+    "callback_endpoint": "/api/platform/callback",
+    "max_concurrent_tasks": 2,
+    "heartbeat_interval_seconds": 30,
+    "request_timeout_seconds": 10
+  },
+
+  "_comments": {
+    "server_host": "服务器监听地址。0.0.0.0表示监听所有网卡，127.0.0.1表示仅本机访问",
+    "server_port": "服务器监听端口（1-65535），默认8000",
+    "lsdyna_executable": "LS-DYNA求解器可执行文件的绝对路径。Windows示例: C:\\Program Files\\LSTC\\LS-DYNA\\ls-dyna_smp_s_R13.exe",
+    "lsdyna_cpu_count": "LS-DYNA求解使用的CPU核心数（建议设置为物理核心数-1）",
+    "lsdyna_timeout_minutes": "LS-DYNA求解超时时间（分钟），超时后自动终止",
+    "lsprepost_executable": "LS-PrePost可执行文件路径，用于后处理生成动画",
+    "tasks_base_dir": "任务目录基路径（相对于项目根目录），每个任务在 tasks/{task_id}/ 下有独立工作空间，包含K文件、LS-DYNA输出、动画等所有产出",
+    "default_resolution": "默认视频分辨率 [宽度, 高度]",
+    "default_fps": "默认帧率（15-60）",
+    "default_view": "默认视角: isometric, front, back, top, bottom, left, right",
+    "default_fringe_variable": "默认云图变量: stress, strain, displacement, velocity, acceleration, plastic_strain",
+    "animation_output_format": "动画输出格式: gif（推荐，需要系统安装FFMPEG）, avi（无需FFMPEG但浏览器可能无法播放）",
+    "platform_integration": {
+      "enabled": "是否启用平台集成（false=独立模式，true=平台模式）",
+      "platform_api_url": "平台API基础地址，App向平台发送注册/心跳/完成通知",
+      "callback_base_url": "App自身的访问地址（含端口），平台通过此地址回调触发任务执行",
+      "callback_endpoint": "回调端点路径，与callback_base_url拼接形成完整回调URL",
+      "max_concurrent_tasks": "最大并发任务数（受许可证限制）",
+      "heartbeat_interval_seconds": "心跳间隔（秒），每隔此时间向平台发送心跳",
+      "request_timeout_seconds": "向平台发送请求的超时时间（秒）"
+    }
+  },
+
+  "_setup_instructions": {
+    "step1": "安装LS-DYNA求解器和LS-PrePost后处理软件",
+    "step2": "找到ls-dyna可执行文件的完整路径，填入 lsdyna_executable",
+    "step3": "找到lsprepost可执行文件的完整路径，填入 lsprepost_executable",
+    "step4": "确保路径中的反斜杠正确转义（Windows使用双反斜杠 \\\\ 或单斜杠 /）",
+    "step5": "根据机器配置调整 lsdyna_cpu_count 和 lsdyna_timeout_minutes",
+    "step6": "如需生成GIF动画，请安装FFMPEG并添加到系统PATH（下载地址: https://ffmpeg.org/download.html）",
+    "step7": "启动后端服务: python backend/app.py"
+  },
+
+  "_troubleshooting": {
+    "error_lsdyna_not_found": "如果报错'LS-DYNA可执行文件不存在'，请检查 lsdyna_executable 路径是否正确",
+    "error_lsprepost_not_found": "如果报错'LS-PrePost可执行文件不存在'，请检查 lsprepost_executable 路径是否正确",
+    "error_timeout": "如果仿真经常超时，请增加 lsdyna_timeout_minutes 的值",
+    "error_permission_denied": "如果报错'权限拒绝'，请确保可执行文件有执行权限（Linux: chmod +x）",
+    "error_gif_not_generated": "如果GIF未生成，可能是系统未安装FFMPEG。解决方案: 1) 安装FFMPEG 或 2) 将 animation_output_format 改为 avi",
+    "error_ffmpeg_not_found": "GIF转换需要系统FFMPEG。Windows用户请从 ffmpeg.org 下载，解压后将bin目录添加到系统PATH环境变量"
+  }
+}
