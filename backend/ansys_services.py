@@ -51,7 +51,7 @@ def load_config(config_file):
     """
     config_path = config_file
     try:
-        with open(config_path, 'r', encoding='utf-8') as f:
+        with open(config_path, 'r', encoding='utf-8-sig') as f:
             config = json.load(f)
         logger.info(f"成功加载配置文件: {config_path}")
         return config

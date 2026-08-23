@@ -178,3 +178,59 @@ Content-Type: application/json
 
 ---
 
+## 实现状态
+
+> 更新日期: 2026-01-09
+
+### 已实现的功能
+
+| 模块 | 文件 | 状态 | 说明 |
+|------|------|------|------|
+| 平台通知器 | `backend/platform_notifier.py` | ✅ | 注册任务、发送心跳、完成通知 |
+| 心跳管理器 | `backend/heartbeat_manager.py` | ✅ | 每30秒心跳，counter 1-30000循环 |
+| 回调端点 | `backend/app.py` | ✅ | `POST /api/platform/callback` |
+| 数据库扩展 | `backend/database.py` | ✅ | platform_api_url, callback_url, heartbeat_counter |
+| 前端适配 | `frontend/app.js` | ✅ | URL参数 `?task_id=xxx` 检测 |
+| 配置文件 | `backend/config.json` | ✅ | platform_integration 配置块 |
+
+### 状态映射（内部 → 对外）
+
+| 内部状态 | 值 | 对外状态 | 值 |
+|---------|---|---------|---|
+| PENDING | 0 | 任务就绪 | 0 |
+| QUEUED | 1 | 任务就绪 | 0 |
+| GENERATING | 2 | 执行中 | 1 |
+| COMPUTING | 6 | 执行中 | 1 |
+| POSTPROCESSING | 7 | 执行中 | 1 |
+| COMPLETED | 3 | 已完成 | 2 |
+| FAILED | 4 | 已失败 | 3 |
+| ABORTED | 5 | 已失败 | 3 |
+
+### 配置示例
+
+```json
+{
+  "platform_integration": {
+    "enabled": false,
+    "platform_api_url": "http://platform.company.com/api",
+    "callback_base_url": "http://192.168.1.100:8000",
+    "callback_endpoint": "/api/platform/callback",
+    "max_concurrent_tasks": 2,
+    "heartbeat_interval_seconds": 30,
+    "request_timeout_seconds": 10
+  }
+}
+```
+
+### 使用说明
+
+**独立模式**（默认）：
+- `enabled: false`
+- 用户访问 `index.html`，填写参数，提交后自动执行
+
+**平台模式**：
+- `enabled: true`
+- 修改 `platform_api_url` 为实际平台地址
+- 修改 `callback_base_url` 为App可访问地址
+- 平台跳转 `index.html?task_id=xxx`
+- 用户填写参数，提交后等待平台回调触发执行

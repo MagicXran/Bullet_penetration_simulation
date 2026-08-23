@@ -19,6 +19,16 @@
   "default_fringe_variable": "stress",
   "animation_output_format": "gif",
 
+  "platform_integration": {
+    "enabled": false,
+    "platform_api_url": "http://platform.company.com/api",
+    "callback_base_url": "http://192.168.1.100:8000",
+    "callback_endpoint": "/api/platform/callback",
+    "max_concurrent_tasks": 2,
+    "heartbeat_interval_seconds": 30,
+    "request_timeout_seconds": 10
+  },
+
   "_comments": {
     "server_host": "服务器监听地址。0.0.0.0表示监听所有网卡，127.0.0.1表示仅本机访问",
     "server_port": "服务器监听端口（1-65535），默认8000",
@@ -31,7 +41,16 @@
     "default_fps": "默认帧率（15-60）",
     "default_view": "默认视角: isometric, front, back, top, bottom, left, right",
     "default_fringe_variable": "默认云图变量: stress, strain, displacement, velocity, acceleration, plastic_strain",
-    "animation_output_format": "动画输出格式: gif（推荐，需要系统安装FFMPEG）, avi（无需FFMPEG但浏览器可能无法播放）"
+    "animation_output_format": "动画输出格式: gif（推荐，需要系统安装FFMPEG）, avi（无需FFMPEG但浏览器可能无法播放）",
+    "platform_integration": {
+      "enabled": "是否启用平台集成（false=独立模式，true=平台模式）",
+      "platform_api_url": "平台API基础地址，App向平台发送注册/心跳/完成通知",
+      "callback_base_url": "App自身的访问地址（含端口），平台通过此地址回调触发任务执行",
+      "callback_endpoint": "回调端点路径，与callback_base_url拼接形成完整回调URL",
+      "max_concurrent_tasks": "最大并发任务数（受许可证限制）",
+      "heartbeat_interval_seconds": "心跳间隔（秒），每隔此时间向平台发送心跳",
+      "request_timeout_seconds": "向平台发送请求的超时时间（秒）"
+    }
   },
 
   "_setup_instructions": {

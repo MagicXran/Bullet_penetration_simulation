@@ -1,0 +1,75 @@
+{
+  "generated_at": "2025-12-15T20:37:37.360529",
+  "template_file": "1.k",
+  "modifications": [
+    {
+      "param_name": "velocity_z",
+      "param_cn": "弹丸初速度",
+      "line": 239,
+      "old_k_value": 0.16,
+      "new_k_value": 0.08,
+      "old_physical": 1600.0,
+      "new_physical": 800.0,
+      "unit": "m/s",
+      "column_range": "50-60"
+    },
+    {
+      "param_name": "bullet_yield_stress",
+      "param_cn": "弹丸屈服强度",
+      "line": 211,
+      "old_k_value": 0.01,
+      "new_k_value": 0.01,
+      "old_physical": 1000.0,
+      "new_physical": 1000.0,
+      "unit": "MPa",
+      "column_range": "40-50"
+    },
+    {
+      "param_name": "target_yield_stress",
+      "param_cn": "靶板屈服强度",
+      "line": 216,
+      "old_k_value": 0.008,
+      "new_k_value": 0.006,
+      "old_physical": 800.0,
+      "new_physical": 600.0,
+      "unit": "MPa",
+      "column_range": "40-50"
+    },
+    {
+      "param_name": "friction_static",
+      "param_cn": "静摩擦系数",
+      "line": 192,
+      "old_k_value": 0.0,
+      "new_k_value": 0.3,
+      "old_physical": 0.0,
+      "new_physical": 0.3,
+      "unit": "-",
+      "column_range": "0-10"
+    },
+    {
+      "param_name": "friction_dynamic",
+      "param_cn": "动摩擦系数",
+      "line": 192,
+      "old_k_value": 0.0,
+      "new_k_value": 0.2,
+      "old_physical": 0.0,
+      "new_physical": 0.2,
+      "unit": "-",
+      "column_range": "10-20"
+    },
+    {
+      "param_name": "simulation_endtime",
+      "param_cn": "仿真终止时间",
+      "line": 28,
+      "old_k_value": 300.0,
+      "new_k_value": 600.0,
+      "old_physical": 30.0,
+      "new_physical": 60.0,
+      "unit": "µs",
+      "column_range": "0-10"
+    }
+  ],
+  "total_lines": 275687,
+  "task_id": "task_hd818uim_20251215203737",
+  "source": "task_queue"
+}

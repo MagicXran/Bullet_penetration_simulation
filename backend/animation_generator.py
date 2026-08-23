@@ -78,7 +78,7 @@ class AnimationGenerator:
                 f"请创建配置文件，参考 backend/config.json.template"
             )
 
-        with open(self.config_path, 'r', encoding='utf-8') as f:
+        with open(self.config_path, 'r', encoding='utf-8-sig') as f:
             config = json.load(f)
 
         # 验证必需的配置项（不再需要animation_output_dir）

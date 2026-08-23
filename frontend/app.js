@@ -143,6 +143,107 @@ function generateTaskId() {
     return `task_${random}_${timestamp}`;
 }
 
+// ==================== 历史任务 ====================
+
+/**
+ * 状态码 → CSS 类名映射
+ */
+function getStatusClass(status) {
+    if (status === 3) return 'status-completed';
+    if (status === 4 || status === 5) return 'status-failed';
+    if (status >= 1 && status <= 2 || status === 6 || status === 7) return 'status-running';
+    return 'status-pending';
+}
+
+/**
+ * 格式化时间为简短显示
+ */
+function formatTime(isoStr) {
+    if (!isoStr) return '-';
+    const d = new Date(isoStr);
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
+ * 折叠/展开历史面板
+ */
+function toggleHistory() {
+    const content = document.getElementById('historyContent');
+    const chevron = document.getElementById('historyChevron');
+    if (!content) return;
+    const hidden = content.style.display === 'none';
+    content.style.display = hidden ? '' : 'none';
+    if (chevron) {
+        chevron.className = hidden ? 'bi bi-chevron-up ms-auto' : 'bi bi-chevron-down ms-auto';
+    }
+}
+
+/**
+ * 加载历史任务列表
+ */
+async function loadTaskHistory() {
+    try {
+        const resp = await fetch(`${API_BASE}/tasks?limit=30`);
+        if (!resp.ok) {
+            console.warn('[历史] 获取任务列表失败:', resp.status);
+            return;
+        }
+        const data = await resp.json();
+        const tasks = data.tasks || [];
+        renderTaskHistory(tasks);
+    } catch (err) {
+        console.error('[历史] 网络错误:', err);
+        const listEl = document.getElementById('historyList');
+        if (listEl) {
+            listEl.innerHTML = '<div class="history-empty"><i class="bi bi-wifi-off"></i> 无法加载历史</div>';
+        }
+    }
+}
+
+/**
+ * 渲染历史任务列表到 #historyList
+ */
+function renderTaskHistory(tasks) {
+    const listEl = document.getElementById('historyList');
+    if (!listEl) return;
+
+    if (!tasks || tasks.length === 0) {
+        listEl.innerHTML = '<div class="history-empty"><i class="bi bi-inbox"></i> 暂无历史任务</div>';
+        return;
+    }
+
+    listEl.innerHTML = tasks.map(task => {
+        const statusClass = getStatusClass(task.status);
+        const statusName = task.status_name || '未知';
+        const time = formatTime(task.created_at);
+        const taskIdShort = task.task_id.length > 20
+            ? task.task_id.substring(0, 20) + '...'
+            : task.task_id;
+
+        // 解析参数摘要
+        let paramSummary = '';
+        try {
+            const p = typeof task.input_params === 'string'
+                ? JSON.parse(task.input_params)
+                : task.input_params;
+            if (p && p.velocity_z) {
+                paramSummary = `${p.velocity_z}m/s`;
+                if (p.target_yield_stress) paramSummary += ` · ${p.target_yield_stress}MPa`;
+            }
+        } catch (_) { /* 解析失败静默跳过 */ }
+
+        return `<div class="history-item" onclick="window.location.href='output.html?task_id=${task.task_id}'">
+            <div class="task-info">
+                <div class="task-id" title="${task.task_id}">${taskIdShort}</div>
+                <div class="task-meta">${time}${paramSummary ? ' · ' + paramSummary : ''}</div>
+            </div>
+            <span class="status-badge ${statusClass}">${statusName}</span>
+        </div>`;
+    }).join('');
+}
+
+
 // ==================== 核心功能 ====================
 
 /**
@@ -162,9 +263,9 @@ async function submitCalculation() {
     // 禁用按钮防止重复提交
     if (submitBtn) submitBtn.disabled = true;
 
-    // 生成任务ID
-    const taskId = generateTaskId();
-    console.log('[提交计算] 任务ID:', taskId);
+    // 获取任务ID：优先用URL传入的 → 否则自动生成
+    const taskId = window.incomingTaskId || generateTaskId();
+    console.log(`[提交计算] 任务ID: ${taskId}`);
 
     try {
         // 1. 保存参数（必须等待成功）
@@ -174,7 +275,8 @@ async function submitCalculation() {
             body: JSON.stringify({
                 task_id: taskId,
                 params: data,
-                enable_postprocess: enablePostprocess
+                enable_postprocess: enablePostprocess,
+                is_platform_mode: false
             })
         });
 
@@ -184,14 +286,14 @@ async function submitCalculation() {
         }
         console.log('[提交计算] 参数保存成功');
 
-        // 2. 触发执行（不等待响应，立即跳转）
-        // 使用 fetch 但不 await，让请求在后台发送
+        // 2. 触发执行
         fetch(`${API_BASE}/task/${taskId}/execute`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         }).catch(err => {
             console.error('[提交计算] 执行请求发送失败:', err);
         });
+        console.log('[提交计算] 已触发执行');
 
         // 3. 立即跳转到结果页（结果页会轮询状态）
         console.log('[提交计算] 立即跳转到结果页');
@@ -208,6 +310,41 @@ async function submitCalculation() {
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('[app.js] 页面加载完成，初始化中...');
+
+    // ========== task_id 检测与历史加载 ==========
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlTaskId = urlParams.get('task_id');
+    // 始终使用独立模式，task_id 仅用于标识任务
+    window.platformTaskId = null;
+
+    if (urlTaskId) {
+        console.log('[app.js] URL携带task_id:', urlTaskId, '检查是否为历史任务...');
+        // 检查该 task_id 是否已存在于数据库
+        fetch(`${API_BASE}/task/${urlTaskId}`)
+            .then(resp => {
+                if (resp.ok) {
+                    // 任务存在 → 跳转到结果页查看历史
+                    console.log('[app.js] 历史任务存在，跳转结果页');
+                    window.location.href = `output.html?task_id=${urlTaskId}`;
+                } else if (resp.status === 404) {
+                    // 任务不存在 → 保存task_id供新建提交使用
+                    window.incomingTaskId = urlTaskId;
+                    console.log('[app.js] 新任务，使用传入的task_id:', urlTaskId);
+                } else {
+                    console.warn('[app.js] 检查task_id失败，状态:', resp.status);
+                }
+            })
+            .catch(err => {
+                console.error('[app.js] 检查task_id网络错误:', err);
+                // 网络错误时当作新任务处理
+                window.incomingTaskId = urlTaskId;
+            });
+    } else {
+        console.log('[app.js] 独立模式，无URL task_id');
+    }
+
+    // 加载历史任务列表
+    loadTaskHistory();
 
     // 预设选择器
     const presetSelector = document.getElementById('presetSelector');

@@ -89,13 +89,31 @@ from heartbeat_manager import (
     get_heartbeat_manager, init_heartbeat_manager, shutdown_heartbeat_manager
 )
 
+# ==================== 全局状态 ====================
+
+# 平台通知器单例（在lifespan中初始化）
+_platform_notifier: Optional[PlatformNotifier] = None
+# 平台配置缓存（在lifespan中设置）
+_platform_config: dict = {}
+
+
+def get_platform_notifier() -> Optional[PlatformNotifier]:
+    """获取平台通知器实例"""
+    return _platform_notifier
+
+
+def get_platform_config() -> dict:
+    """获取平台配置"""
+    return _platform_config
+
+
 # ==================== 应用生命周期管理 ====================
 
 def load_config() -> dict:
     """加载配置文件"""
     config_path = get_backend_dir() / "config.json"
     if config_path.exists():
-        with open(config_path, 'r', encoding='utf-8') as f:
+        with open(config_path, 'r', encoding='utf-8-sig') as f:
             return json.load(f)
     return {}
 
@@ -103,6 +121,8 @@ def load_config() -> dict:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理器（替换on_event）"""
+    global _platform_notifier, _platform_config
+
     # Startup
     print("[INFO] 应用启动中...")
 
@@ -112,8 +132,10 @@ async def lifespan(app: FastAPI):
 
     # 初始化平台交互模块
     platform_config = config.get('platform_integration', {})
+    _platform_config = platform_config  # 缓存到全局变量
     try:
         notifier = PlatformNotifier(platform_config)
+        _platform_notifier = notifier  # 保存到全局变量
         db = Database()  # 获取数据库实例
         heartbeat_interval = platform_config.get('heartbeat_interval_seconds', 30)
         init_heartbeat_manager(notifier, db, heartbeat_interval)
@@ -302,9 +324,8 @@ class TaskSaveRequest(BaseModel):
     task_id: str = Field(..., min_length=8, max_length=128, description="任务ID（平台生成的UUID）")
     params: SimulationParameters = Field(..., description="仿真参数")
     enable_postprocess: bool = Field(default=False, description="是否启用后处理（生成GIF动画）")
-    # 平台交互可选参数（有值表示平台任务）
-    platform_api_url: Optional[str] = Field(default=None, description="平台API地址（有值=平台任务）")
-    callback_url: Optional[str] = Field(default=None, description="App回调URL（供平台触发执行）")
+    # 平台模式标记（前端检测 URL 参数 task_id 后设置为 true）
+    is_platform_mode: bool = Field(default=False, description="是否为平台模式（由前端根据URL参数设置）")
 
     class Config:
         json_schema_extra = {
@@ -318,7 +339,8 @@ class TaskSaveRequest(BaseModel):
                     "friction_dynamic": 0.18,
                     "simulation_endtime": 30.0
                 },
-                "enable_postprocess": True
+                "enable_postprocess": True,
+                "is_platform_mode": False
             }
         }
 
@@ -468,7 +490,7 @@ async def list_generated_files():
         metadata = {}
         if metadata_path.exists():
             import json
-            with open(metadata_path, 'r', encoding='utf-8') as f:
+            with open(metadata_path, 'r', encoding='utf-8-sig') as f:
                 metadata = json.load(f)
 
         files.append({
@@ -538,7 +560,45 @@ async def delete_file(filename: str):
     return {"message": f"成功删除文件: {filename}"}
 
 
-# ==================== 任务管理API端点（平台A集成）====================
+# ==================== 任务管理API端点 ====================
+
+@app.get("/api/tasks")
+async def list_tasks(limit: int = 50):
+    """
+    获取所有任务列表（按创建时间倒序）
+
+    返回精简字段，不包含 k_file_content 等大字段
+
+    Args:
+        limit: 最大返回数量，默认50
+    """
+    try:
+        tm = get_task_manager()
+        tasks = tm.get_all_tasks(limit)
+
+        # 精简字段，去掉大体积内容
+        result = []
+        for t in tasks:
+            result.append({
+                "task_id": t.get("task_id"),
+                "status": t.get("status"),
+                "status_name": TaskManager.get_status_name(t.get("status", 0)),
+                "source": t.get("source"),
+                "input_params": t.get("input_params"),
+                "created_at": t.get("created_at"),
+                "updated_at": t.get("updated_at"),
+                "start_time": t.get("start_time"),
+                "end_time": t.get("end_time"),
+                "progress": t.get("progress"),
+                "error_message": t.get("error_message"),
+                "enable_postprocess": t.get("enable_postprocess"),
+            })
+
+        return {"tasks": result, "total": len(result)}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取任务列表失败: {str(e)}")
+
 
 @app.get("/api/task/{task_id}")
 async def get_task(task_id: str):
@@ -649,16 +709,42 @@ async def save_task(request: TaskSaveRequest):
                 })
 
         # 保存任务（状态为0-待执行）
-        # 如果有platform_api_url，标记为平台任务
-        source = 'platform' if request.platform_api_url else 'standalone'
+        # 判断是否为平台任务
+        platform_config = get_platform_config()
+        notifier = get_platform_notifier()
+
+        # 平台模式条件：前端标记 + 配置启用 + 通知器可用
+        is_platform_task = (
+            request.is_platform_mode
+            and platform_config.get('enabled', False)
+            and notifier is not None
+        )
+
+        # 从配置文件获取平台相关URL
+        platform_api_url = None
+        callback_url = None
+        if is_platform_task:
+            platform_api_url = platform_config.get('platform_api_url')
+            callback_base = platform_config.get('callback_base_url', '')
+            callback_endpoint = platform_config.get('callback_endpoint', '/api/platform/callback')
+            callback_url = f"{callback_base.rstrip('/')}{callback_endpoint}"
+
+        source = 'platform' if is_platform_task else 'standalone'
         task = tm.submit_task(
             task_id,
             param_dict,
             source=source,
             enable_postprocess=request.enable_postprocess,
-            platform_api_url=request.platform_api_url,
-            callback_url=request.callback_url
+            platform_api_url=platform_api_url,
+            callback_url=callback_url
         )
+
+        # 平台任务：向平台注册（包含callback_url）
+        if is_platform_task and notifier:
+            success, error = notifier.register_task(task_id, status=0)
+            if not success:
+                logger.warning(f"[{task_id}] 向平台注册失败: {error}")
+                # 注册失败不影响任务保存，继续流程
 
         return {
             "success": True,
@@ -667,7 +753,7 @@ async def save_task(request: TaskSaveRequest):
             "status_name": "待执行",
             "source": source,
             "enable_postprocess": request.enable_postprocess,
-            "message": "参数已保存，等待平台触发执行" if source == 'platform' else "参数已保存",
+            "message": "参数已保存，等待平台触发执行" if is_platform_task else "参数已保存",
             "created_at": task.get('created_at')
         }
 
