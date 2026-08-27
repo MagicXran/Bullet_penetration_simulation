@@ -131,3 +131,8 @@ cmake-build-*/
 Thumbs.db
 ~$*
 nul
+
+# SQLite runtime databases
+backend/tasks.db
+backend/backend/tasks.db
+backend/test_tasks.db
